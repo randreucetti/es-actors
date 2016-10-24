@@ -51,7 +51,6 @@ class SimplisticHandler extends Actor {
   val mapper = new ObjectMapper() with ScalaObjectMapper
   mapper.registerModule(DefaultScalaModule)
 
-  val buf = new StringBuilder
 
   def receive = {
     case Received(data) => {
@@ -59,13 +58,12 @@ class SimplisticHandler extends Actor {
       if ("Ok?" == str) {
         sender() ! Write(ByteString("Ok"))
       } else {
-//        val decoded = mapper.readValue[Seq[Map[String, String]]](str)
-//        println(decoded)
-        buf ++= str
+        println(str)
+        val decoded = mapper.readValue[Seq[Map[String, String]]](str)
       }
     }
     case PeerClosed => {
-      println(s"Client disconnected: ${buf.length}")
+      println(s"Client disconnected")
       context stop self
     }
     case other => println(s"Something else here? $other")
