@@ -48,7 +48,7 @@ class SimplisticHandler extends Actor {
   def receive = {
     case Received(data) => {
       println(data.decodeString(ByteString.UTF_8))
-      sender() ! Write(data)
+//      sender() ! Write(data)
       sender() ! Write(ByteString("response..."))
     }
     case PeerClosed => context stop self

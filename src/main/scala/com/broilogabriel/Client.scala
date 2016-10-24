@@ -30,13 +30,14 @@ object Client {
     val props = Props(
       classOf[Client],
       new InetSocketAddress("localhost", 9021),
-      s"GET / HTTP/1.1\r\nHost: localhost\r\nAccept: */*\r\n\r\n",
-      promise)
+      s"Is this the message?",
+      promise
+    )
     val sys = ActorSystem.create("MyActorSystem")
     val actor = sys.actorOf(props)
-    promise.future map { data =>
+    promise.future.map { data =>
       actor ! "close"
-      println(data)
+      println(s"Response from server: $data")
     }
   }
 
