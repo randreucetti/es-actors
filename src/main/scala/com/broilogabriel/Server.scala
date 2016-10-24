@@ -8,6 +8,9 @@ import akka.actor.Props
 import akka.io.IO
 import akka.io.Tcp
 import akka.util.ByteString
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 
 /**
   * Created by broilogabriel on 21/10/16.
@@ -45,12 +48,26 @@ class SimplisticHandler extends Actor {
 
   import Tcp._
 
+  val mapper = new ObjectMapper() with ScalaObjectMapper
+  mapper.registerModule(DefaultScalaModule)
+
+  val buf = new StringBuilder
+
   def receive = {
     case Received(data) => {
-      println(data.decodeString(ByteString.UTF_8))
-//      sender() ! Write(data)
-      sender() ! Write(ByteString("response..."))
+      val str = data.decodeString(ByteString.UTF_8)
+      if ("Ok?" == str) {
+        sender() ! Write(ByteString("Ok"))
+      } else {
+//        val decoded = mapper.readValue[Seq[Map[String, String]]](str)
+//        println(decoded)
+        buf ++= str
+      }
     }
-    case PeerClosed => context stop self
+    case PeerClosed => {
+      println(s"Client disconnected: ${buf.length}")
+      context stop self
+    }
+    case other => println(s"Something else here? $other")
   }
 }
