@@ -18,7 +18,7 @@ import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 object Server {
   def main(args: Array[String]): Unit = {
     val props = Props(classOf[Server])
-    val sys = ActorSystem.create("MyActorSystem")
+    val sys = ActorSystem.create("MigrationServer")
     val actor = sys.actorOf(props)
   }
 }
@@ -31,15 +31,17 @@ class Server extends Actor {
   IO(Tcp) ! Bind(self, new InetSocketAddress("localhost", 9021))
 
   def receive = {
-    case b@Bound(localAddress) => println("BOUNDED")
-    // do some logging or setup ...
+    case b@Bound(localAddress) => println(s"Bounded to ${localAddress.getHostName}:${localAddress.getPort}")
 
     case CommandFailed(_: Bind) => context stop self
 
     case c@Connected(remote, local) =>
+      println(s"new connected? ${remote.getHostName}")
       val handler = context.actorOf(Props[SimplisticHandler])
       val connection = sender()
       connection ! Register(handler)
+
+    case _ => println("Something else here?")
   }
 
 }
@@ -58,8 +60,8 @@ class SimplisticHandler extends Actor {
       if ("Ok?" == str) {
         sender() ! Write(ByteString("Ok"))
       } else {
-        println(str)
-        val decoded = mapper.readValue[Seq[Map[String, String]]](str)
+        val decoded = mapper.readValue[Map[String, String]](str)
+        println(s"hitId? ${decoded("hitId")}")
       }
     }
     case PeerClosed => {
