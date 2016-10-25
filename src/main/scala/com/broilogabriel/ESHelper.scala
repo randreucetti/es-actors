@@ -1,6 +1,7 @@
 package com.broilogabriel
 
 import java.net.InetAddress
+import java.util.UUID
 
 import org.elasticsearch.action.bulk.BulkProcessor
 import org.elasticsearch.action.bulk.BulkProcessor.Builder
@@ -60,4 +61,4 @@ object Cluster {
 
 }
 
-case class TransferObject(index: String, hitType: String, hitId: String, source: String)
+case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)

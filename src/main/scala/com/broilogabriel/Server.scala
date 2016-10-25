@@ -1,18 +1,11 @@
 package com.broilogabriel
 
-import java.net.InetSocketAddress
+import java.util.UUID
 
 import akka.actor.Actor
 import akka.actor.ActorSystem
 import akka.actor.Props
-import akka.io.IO
-import akka.io.Inet.SO.ReceiveBufferSize
-import akka.io.Inet.SO.SendBufferSize
-import akka.io.Tcp
-import akka.util.ByteString
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
+import akka.remote.Ack
 import org.elasticsearch.action.bulk.BulkProcessor
 import org.elasticsearch.action.index.IndexRequest
 import org.elasticsearch.client.transport.TransportClient
@@ -35,61 +28,42 @@ object Server {
     val cluster = Cluster.getCluster(margs("cluster"), margs("host"), margs("port").toInt)
 
     val sys = ActorSystem.create("MigrationServer")
-    val actor = sys.actorOf(Props(classOf[Server], cluster))
+    val actor = sys.actorOf(Props(classOf[Server], cluster), name = "RemoteServer")
+    actor ! "Starting Migration Server"
   }
 }
 
 class Server(cluster: TransportClient) extends Actor {
 
-  import Tcp._
-  import context.system
-
-  IO(Tcp) ! Bind(self, new InetSocketAddress("localhost", 9021), options = List(SendBufferSize(Integer.MAX_VALUE), ReceiveBufferSize(Integer.MAX_VALUE)))
-
   def receive = {
-    case b@Bound(localAddress) => println(s"Bounded to ${localAddress.getHostName}:${localAddress.getPort}")
+    case Ack =>
+      println("ACK received")
+      val uuid = UUID.randomUUID
+      val handler = context.actorOf(Props(classOf[BulkHandler], Cluster.getBulkProcessor(cluster).build()), name = uuid.toString)
+      handler.forward(uuid)
+    //      sender() ! 1
 
-    case CommandFailed(_: Bind) => context stop self
+    case data: TransferObject => self.forward(data)
 
-    case c@Connected(remote, local) =>
-      println(s"new connected? ${remote.getHostName}")
-      val bulkProcessor = Cluster.getBulkProcessor(cluster).build()
-      val handler = context.actorOf(Props(classOf[SimplisticHandler], bulkProcessor))
-      val connection = sender()
-      connection ! Register(handler)
-
-    case _ => println("Something else here?")
+    case msg: String => println(s"Received: ${msg}")
   }
 
 }
 
-class SimplisticHandler(bulkProcessor: BulkProcessor) extends Actor {
-
-  import Tcp._
-
-  val mapper = new ObjectMapper() with ScalaObjectMapper
-  mapper.registerModule(DefaultScalaModule)
+class BulkHandler(bulkProcessor: BulkProcessor) extends Actor {
 
   def receive = {
-    case Received(data) => {
-      val str = data.decodeString(ByteString.UTF_8)
-      if ("Ok?" == str) {
-        sender() ! Write(ByteString("Ok"))
-      } else {
-        try {
-          val decoded = mapper.readValue[TransferObject](str)
-          val indexRequest = new IndexRequest(decoded.index, decoded.hitType, decoded.hitId)
-          indexRequest.source(decoded.source)
-          bulkProcessor.add(indexRequest)
-        } catch {
-          case e: Exception => println(s"${e.getClass} | ${str.length}")
-        }
-      }
-    }
-    case PeerClosed => {
-      println(s"Client disconnected")
-      context stop self
-    }
+
+    case uuid: UUID =>
+      println(s"It's me ${uuid.toString}")
+      sender() ! uuid
+
+    case data: TransferObject =>
+      val indexRequest = new IndexRequest(data.index, data.hitType, data.hitId)
+      indexRequest.source(data.source)
+      bulkProcessor.add(indexRequest)
+
     case other => println(s"Something else here? $other")
   }
+
 }
