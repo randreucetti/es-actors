@@ -37,3 +37,5 @@ object Cluster {
   }
 
 }
+
+case class TransferObject(index: String, hitType: String, hitId: String, source: String)

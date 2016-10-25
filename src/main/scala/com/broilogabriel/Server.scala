@@ -53,7 +53,6 @@ class SimplisticHandler extends Actor {
   val mapper = new ObjectMapper() with ScalaObjectMapper
   mapper.registerModule(DefaultScalaModule)
 
-
   def receive = {
     case Received(data) => {
       val str = data.decodeString(ByteString.UTF_8)
@@ -61,8 +60,8 @@ class SimplisticHandler extends Actor {
         sender() ! Write(ByteString("Ok"))
       } else {
         try {
-          val decoded = mapper.readValue[Map[String, String]](str)
-          println(s"hitId? ${decoded("hitId")}")
+          val decoded = mapper.readValue[TransferObject](str)
+          //          println(s"hitId? ${decoded.hitId}")
         } catch {
           case e: Exception => println(s"${e.getClass} | ${str.length}")
         }

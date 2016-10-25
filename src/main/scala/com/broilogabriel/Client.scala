@@ -101,14 +101,10 @@ class Handler(cluster: TransportClient, index: String, scrollId: String, promise
     val hits = Cluster.scroller(index, scrollId, cluster)
     if (hits.nonEmpty) {
       hits.foreach(hit => {
-        val str = mapper.writeValueAsString(Map(
-          "index" -> index,
-          "hitType" -> hit.getType,
-          "hitId" -> hit.getId,
-          "source" -> hit.getSourceAsString
-        ))
+        // TODO huge data will cause problems because tcp limitations, CompoundWrite may be a solution
+        val data = ByteString(mapper.writeValueAsString(TransferObject(index, hit.getType, hit.getId, hit.getSourceAsString)))
         Thread.sleep(1)
-        actor ! Write(ByteString(str))
+        actor ! Write(data)
       })
       val sent = hits.size + total
       println(s"Total sent: $sent")
