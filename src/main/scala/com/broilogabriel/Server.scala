@@ -11,19 +11,34 @@ import akka.util.ByteString
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
+import org.elasticsearch.action.bulk.BulkProcessor
+import org.elasticsearch.action.index.IndexRequest
+import org.elasticsearch.client.transport.TransportClient
 
 /**
   * Created by broilogabriel on 21/10/16.
   */
 object Server {
+
+  def mapArgs(args: Array[String]): Map[String, String] = {
+    args.filter(_.startsWith("--")).map(_.split("=") match { case Array(k, v) => k.replaceFirst("--", "") -> v }).toMap
+  }
+
   def main(args: Array[String]): Unit = {
-    val props = Props(classOf[Server])
+    val margs = mapArgs(args)
+    if (!margs.contains("cluster") || !margs.contains("host") || !margs.contains("port")) {
+      System.exit(0)
+    }
+
+    val cluster = Cluster.getCluster(margs("cluster"), margs("host"), margs("port").toInt)
+
+    val props = Props(classOf[Server], cluster)
     val sys = ActorSystem.create("MigrationServer")
     val actor = sys.actorOf(props)
   }
 }
 
-class Server extends Actor {
+class Server(cluster: TransportClient) extends Actor {
 
   import Tcp._
   import context.system
@@ -37,7 +52,8 @@ class Server extends Actor {
 
     case c@Connected(remote, local) =>
       println(s"new connected? ${remote.getHostName}")
-      val handler = context.actorOf(Props[SimplisticHandler])
+      val bulkProcessor = Cluster.getBulkProcessor(cluster).build()
+      val handler = context.actorOf(Props(classOf[SimplisticHandler], bulkProcessor))
       val connection = sender()
       connection ! Register(handler)
 
@@ -46,13 +62,12 @@ class Server extends Actor {
 
 }
 
-class SimplisticHandler extends Actor {
+class SimplisticHandler(bulkProcessor: BulkProcessor) extends Actor {
 
   import Tcp._
 
   val mapper = new ObjectMapper() with ScalaObjectMapper
   mapper.registerModule(DefaultScalaModule)
-
 
   def receive = {
     case Received(data) => {
@@ -61,8 +76,11 @@ class SimplisticHandler extends Actor {
         sender() ! Write(ByteString("Ok"))
       } else {
         try {
-          val decoded = mapper.readValue[Map[String, String]](str)
-          println(s"hitId? ${decoded("hitId")}")
+          val decoded = mapper.readValue[TransferObject](str)
+          println(s"hitId? ${decoded.hitId}")
+          val indexRequest = new IndexRequest(decoded.index, decoded.hitType, decoded.hitId)
+          indexRequest.source(decoded.source)
+          bulkProcessor.add(indexRequest)
         } catch {
           case e: Exception => println(s"${e.getClass} | ${str.length}")
         }
