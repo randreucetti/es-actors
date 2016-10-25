@@ -60,8 +60,12 @@ class SimplisticHandler extends Actor {
       if ("Ok?" == str) {
         sender() ! Write(ByteString("Ok"))
       } else {
-        val decoded = mapper.readValue[Map[String, String]](str)
-        println(s"hitId? ${decoded("hitId")}")
+        try {
+          val decoded = mapper.readValue[Map[String, String]](str)
+          println(s"hitId? ${decoded("hitId")}")
+        } catch {
+          case e: Exception => println(s"${e.getClass} | ${str.length}")
+        }
       }
     }
     case PeerClosed => {

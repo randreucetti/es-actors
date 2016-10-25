@@ -19,12 +19,12 @@ object Cluster {
     new TransportClient(settings).addTransportAddress(new InetSocketTransportAddress(address, port))
   }
 
-  def getScrollId(cluster: TransportClient, index: String) = {
+  def getScrollId(cluster: TransportClient, index: String, size: Int = 5000) = {
     cluster.prepareSearch(index)
       .setSearchType(SearchType.SCAN)
       .setScroll(TimeValue.timeValueMinutes(5))
       .setQuery(QueryBuilders.matchAllQuery)
-      .setSize(50)
+      .setSize(size)
       .execute().actionGet().getScrollId
   }
 

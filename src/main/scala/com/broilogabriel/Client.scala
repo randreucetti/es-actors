@@ -107,6 +107,7 @@ class Handler(cluster: TransportClient, index: String, scrollId: String, promise
           "hitId" -> hit.getId,
           "source" -> hit.getSourceAsString
         ))
+        Thread.sleep(1)
         actor ! Write(ByteString(str))
       })
       val sent = hits.size + total
