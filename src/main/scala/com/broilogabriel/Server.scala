@@ -6,6 +6,8 @@ import akka.actor.Actor
 import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.io.IO
+import akka.io.Inet.SO.ReceiveBufferSize
+import akka.io.Inet.SO.SendBufferSize
 import akka.io.Tcp
 import akka.util.ByteString
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -32,9 +34,8 @@ object Server {
 
     val cluster = Cluster.getCluster(margs("cluster"), margs("host"), margs("port").toInt)
 
-    val props = Props(classOf[Server], cluster)
     val sys = ActorSystem.create("MigrationServer")
-    val actor = sys.actorOf(props)
+    val actor = sys.actorOf(Props(classOf[Server], cluster))
   }
 }
 
@@ -43,7 +44,7 @@ class Server(cluster: TransportClient) extends Actor {
   import Tcp._
   import context.system
 
-  IO(Tcp) ! Bind(self, new InetSocketAddress("localhost", 9021))
+  IO(Tcp) ! Bind(self, new InetSocketAddress("localhost", 9021), options = List(SendBufferSize(Integer.MAX_VALUE), ReceiveBufferSize(Integer.MAX_VALUE)))
 
   def receive = {
     case b@Bound(localAddress) => println(s"Bounded to ${localAddress.getHostName}:${localAddress.getPort}")
@@ -77,7 +78,6 @@ class SimplisticHandler(bulkProcessor: BulkProcessor) extends Actor {
       } else {
         try {
           val decoded = mapper.readValue[TransferObject](str)
-          println(s"hitId? ${decoded.hitId}")
           val indexRequest = new IndexRequest(decoded.index, decoded.hitType, decoded.hitId)
           indexRequest.source(decoded.source)
           bulkProcessor.add(indexRequest)
