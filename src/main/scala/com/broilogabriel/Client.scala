@@ -3,24 +3,24 @@ package com.broilogabriel
 import java.net.InetSocketAddress
 
 import akka.actor.Actor
+import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.io.IO
 import akka.io.Tcp
-import akka.io.Tcp.Close
 import akka.io.Tcp.CommandFailed
 import akka.io.Tcp.Connect
 import akka.io.Tcp.Connected
-import akka.io.Tcp.ConnectionClosed
-import akka.io.Tcp.Received
 import akka.io.Tcp.Register
 import akka.io.Tcp.Write
 import akka.util.ByteString
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import org.elasticsearch.client.transport.TransportClient
 
 import scala.annotation.tailrec
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Promise
 
 /**
@@ -47,50 +47,22 @@ object Client {
     val scrollId = Cluster.getScrollId(cluster, index)
 
     val promise = Promise[Int]()
-    val props = Props(
-      classOf[Client],
-      new InetSocketAddress("localhost", 9021),
-      promise
-    )
-    val sys = ActorSystem.create("MyActorSystem")
+    val actorSystem = ActorSystem.create("MigrationClient")
 
-    sendWhile(cluster, index, scrollId, props, sys)
+    val handler = actorSystem.actorOf(Props(classOf[Handler], cluster, index, scrollId, promise), "Handler")
 
-    //    val actor = sys.actorOf(props)
-    //    promise.future.map { data =>
-    //      actor ! "close"
-    //      actor ! Write(ByteString("close"))
-    //    }
+    val actor = actorSystem.actorOf(Props(classOf[Client], new InetSocketAddress("localhost", 9021), handler), "Connection")
 
-  }
-
-  @tailrec
-  private def sendWhile(
-    cluster: TransportClient,
-    index: String,
-    scrollId: String,
-    props: Props,
-    actorSystem: ActorSystem,
-    total: Int = 0): Int = {
-
-    val ret = Cluster.scroller(index, scrollId, cluster)
-    if (ret.nonEmpty) {
-      val actor = actorSystem.actorOf(props)
-      val str = mapper.writeValueAsString(ret)
-      actor ! Write(ByteString(str))
-      val sent = ret.size + total
-      println(s"Total sent: $sent")
-      sendWhile(cluster, index, scrollId, props, actorSystem, sent)
-    } else {
-      total
+    promise.future.map { data =>
+      println(s"Done: $data")
+      actor ! data
     }
+
   }
 
 }
 
-class Client(
-  remote: InetSocketAddress,
-  thePromise: Promise[Int]) extends Actor {
+class Client(remote: InetSocketAddress, handler: ActorRef) extends Actor {
 
   import context.system
 
@@ -103,59 +75,65 @@ class Client(
       context stop self
 
     case c@Connected(remote, local) =>
-      println("Connect succeeded")
+
+      //      val handler = context.actorOf(Props(classOf[Handler], promise))
       val connection = sender()
-      connection ! Register(self)
-      println("Sending request early")
+      connection ! Register(handler)
       connection ! Write(ByteString("Ok?"))
-      context become {
-        case CommandFailed(w: Write) =>
-          println("Failed to write request.")
-        case Received(data) =>
-          val received = data.decodeString(ByteString.UTF_8)
-          println(s"Received response. ${received}")
-          if ("Ok" == received) {
-            context stop self
-            System.exit(0)
-          }
-        case "close" =>
-          println("Closing connection")
-        case _: ConnectionClosed =>
-          println("Connection closed by server.")
-          context stop self
-        case Close => println("Should close now 2")
-      }
 
-    case Received(data) => println(s"Something else is up. ${data.decodeString(ByteString.UTF_8)}")
-
-    case Close => println("Should close now 1")
+    case some: Int =>
+      println(s"Received $some to force finish")
+      context.stop(self)
+      context.system.terminate()
+      println("Terminated")
   }
 }
 
-//class Handler extends Actor {
-//
-//  import Tcp._
-//
-//  val mapper = new ObjectMapper() with ScalaObjectMapper
-//  mapper.registerModule(DefaultScalaModule)
-//
-//
-//  def receive = {
-//    case CommandFailed(w: Write) =>
-//      println("Failed to write request.")
-//    case Received(data) =>
-//      val received = data.decodeString(ByteString.UTF_8)
-//      println(s"Received response. ${received}")
-//      if ("Ok" == received) {
-//        //        thePromise.success(sendWhile(connection))
-//        //        context stop self
-//        //        System.exit(0)
-//      }
-//    case "close" =>
-//      println("Closing connection")
-//    case _: ConnectionClosed =>
-//      println("Connection closed by server.")
-//      context stop self
-//    case Close => println("Should close now 2")
-//  }
-//}
+class Handler(cluster: TransportClient, index: String, scrollId: String, promise: Promise[Int]) extends Actor {
+
+  import Tcp._
+
+  val mapper = new ObjectMapper() with ScalaObjectMapper
+  mapper.registerModule(DefaultScalaModule)
+
+  @tailrec
+  private def sendWhile(cluster: TransportClient, index: String, scrollId: String, actor: ActorRef, total: Int = 0): Int = {
+    val hits = Cluster.scroller(index, scrollId, cluster)
+    if (hits.nonEmpty) {
+      hits.foreach(hit => {
+        val str = mapper.writeValueAsString(Map(
+          "index" -> index,
+          "hitType" -> hit.getType,
+          "hitId" -> hit.getId,
+          "source" -> hit.getSourceAsString
+        ))
+        actor ! Write(ByteString(str))
+      })
+      val sent = hits.size + total
+      println(s"Total sent: $sent")
+      sendWhile(cluster, index, scrollId, actor, sent)
+    } else {
+      total
+    }
+  }
+
+  def receive = {
+    case CommandFailed(w: Write) =>
+      println("Failed to write request.")
+    case Received(data) =>
+      val received = data.decodeString(ByteString.UTF_8)
+      println(s"Received response. ${received}")
+      received match {
+        case "Ok" => {
+          promise.success(sendWhile(cluster, index, scrollId, sender()))
+        }
+        case other => println(other)
+      }
+    case "close" =>
+      println("Closing connection")
+    case _: ConnectionClosed =>
+      println("Connection closed by server.")
+      context stop self
+    case Close => println("Should close now 2")
+  }
+}

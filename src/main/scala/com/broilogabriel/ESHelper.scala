@@ -6,6 +6,7 @@ import org.elasticsearch.common.settings.ImmutableSettings
 import org.elasticsearch.common.transport.InetSocketTransportAddress
 import org.elasticsearch.common.unit.TimeValue
 import org.elasticsearch.index.query.QueryBuilders
+import org.elasticsearch.search.SearchHit
 
 
 /**
@@ -27,23 +28,12 @@ object Cluster {
       .execute().actionGet().getScrollId
   }
 
-  def scroller(index: String, scrollId: String, cluster: TransportClient): Seq[Map[String, String]] = {
+  def scroller(index: String, scrollId: String, cluster: TransportClient): Array[SearchHit] = {
     val partial = cluster.prepareSearchScroll(scrollId)
       .setScroll(TimeValue.timeValueMinutes(20))
       .execute()
       .actionGet()
-    if (partial.getHits.hits().length > 0) {
-      partial.getHits.hits().map(hit => {
-        //        val indexRequest = new IndexRequest(index, hit.getType, hit.getId)
-        //        indexRequest.source(hit.getSourceRef)
-        Map("index" -> index
-          , "hitType" -> hit.getType
-          , "hitId" -> hit.getId
-          , "source" -> hit.getSourceAsString)
-      })
-    } else {
-      Seq.empty
-    }
+    partial.getHits.hits()
   }
 
 }
