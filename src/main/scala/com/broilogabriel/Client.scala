@@ -7,6 +7,8 @@ import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.io.IO
+import akka.io.Inet.SO.ReceiveBufferSize
+import akka.io.Inet.SO.SendBufferSize
 import akka.io.Tcp
 import akka.io.Tcp.CommandFailed
 import akka.io.Tcp.Connect
@@ -14,6 +16,7 @@ import akka.io.Tcp.Connected
 import akka.io.Tcp.Register
 import akka.io.Tcp.Write
 import akka.util.ByteString
+import akka.util.CompactByteString
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
@@ -67,7 +70,7 @@ class Client(remote: InetSocketAddress, handler: ActorRef) extends Actor {
   import context.system
 
   println("Connecting")
-  IO(Tcp) ! Connect(remote)
+  IO(Tcp) ! Connect(remote, options = List(SendBufferSize(Integer.MAX_VALUE), ReceiveBufferSize(Integer.MAX_VALUE)))
 
   def receive = {
     case CommandFailed(_: Connect) =>
@@ -101,8 +104,7 @@ class Handler(cluster: TransportClient, index: String, scrollId: String, promise
     val hits = Cluster.scroller(index, scrollId, cluster)
     if (hits.nonEmpty) {
       hits.foreach(hit => {
-        // TODO huge data will cause problems because tcp limitations, CompoundWrite may be a solution
-        val data = ByteString(mapper.writeValueAsString(TransferObject(index, hit.getType, hit.getId, hit.getSourceAsString)))
+        val data = CompactByteString(mapper.writeValueAsString(TransferObject(index, hit.getType, hit.getId, hit.getSourceAsString)))
         Thread.sleep(1)
         actor ! Write(data)
       })
