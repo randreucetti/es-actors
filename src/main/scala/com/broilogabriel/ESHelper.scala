@@ -1,5 +1,7 @@
 package com.broilogabriel
 
+import java.util.UUID
+
 import org.elasticsearch.action.search.SearchType
 import org.elasticsearch.client.transport.TransportClient
 import org.elasticsearch.common.settings.ImmutableSettings
@@ -38,4 +40,4 @@ object Cluster {
 
 }
 
-case class TransferObject(index: String, hitType: String, hitId: String, source: String)
+case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)
