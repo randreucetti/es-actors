@@ -78,6 +78,8 @@ object Client {
     opt[String]('u', "targetCluster").required().valueName("<target_cluster>")
       .action((x, c) => c.copy(targetCluster = x))
 
+    opt[String]("remoteAddress").valueName("<remote_address>").action((x, c) => c.copy(remoteAddress = x))
+
     help("help").text("prints this usage text")
   }
 
