@@ -21,6 +21,11 @@ object Cluster {
     new TransportClient(settings).addTransportAddress(new InetSocketTransportAddress(cluster.address, cluster.port))
   }
 
+  def checkIndex(cluster: TransportClient, index: String): Boolean = {
+    cluster.admin().indices().prepareExists(index)
+      .execute().actionGet().isExists
+  }
+
   def getScrollId(cluster: TransportClient, index: String, size: Int = 5000) = {
     cluster.prepareSearch(index)
       .setSearchType(SearchType.SCAN)
