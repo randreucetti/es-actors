@@ -90,7 +90,7 @@ object Client {
   }
 
   def init(config: Config): Unit = {
-    val actorSystem = ActorSystem.create("MigrationClient").
+    val actorSystem = ActorSystem.create("MigrationClient")
     println(s"Creating actors for indices ${config.indices}")
     config.indices.foreach(index =>
       actorSystem.actorOf(Props(classOf[Client], config.copy(index = index, indices = Set.empty)) , s"RemoteClient-$index")
