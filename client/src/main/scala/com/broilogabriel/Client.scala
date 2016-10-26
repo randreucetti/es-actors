@@ -100,9 +100,9 @@ object Client {
 }
 
 class Client(config: Config) extends Actor {
-  var scrollId: String
-  var cluster: TransportClient
-  var uuid: UUID
+  var scrollId: String = ""
+  var cluster: TransportClient = null
+  var uuid: UUID = null
 
   override def preStart(): Unit = {
     val path = s"akka.tcp://MigrationServer@${config.remoteAddress}:${config.remotePort}/user/${config.remoteName}"
