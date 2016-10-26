@@ -10,7 +10,10 @@ sbt "run-main com.broilogabriel.Server"
 ```
 Usage: es-client [options]
 
-  -i, --index <index>      
+  -i, --indices <index1>,<index2>...
+                           
+  -d, --dateRange:<start_date>=<end_date>
+                           Start date value should be lower than end date.
   -s, --source <source_address>
                            default value 'localhost'
   -p, --sourcePort <source_port>
@@ -22,12 +25,23 @@ Usage: es-client [options]
   -r, --targetPort <target_port>
                            default value 9301
   -u, --targetCluster <target_cluster>
+                           
+  --help                   prints this usage text
 ```
 
 Example:
 ```
+
+sbt "run-main com.broilogabriel.Client --help"
+
 sbt "run-main com.broilogabriel.Client \
-        --index=index_name \
+        --indices=index_name \
         --sourceCluster=cluster_name \
         --targetCluster=cluster_name"
+
+sbt "run-main com.broilogabriel.Client \
+        -d:2016-10-1=2016-10-25 \
+        -c=cluster_name \
+        -u=cluster_name"
+
 ```
