@@ -34,5 +34,8 @@ abstract class Reaper extends Actor {
 
 class ProductionReaper extends Reaper {
   // Shutdown
-  def allSoulsReaped(): Unit = context.system.terminate()
+  def allSoulsReaped(): Unit = {
+    println("all done, reaping souls")
+    context.system.terminate()
+  }
 }
