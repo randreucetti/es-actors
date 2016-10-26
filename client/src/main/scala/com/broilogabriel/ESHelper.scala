@@ -50,3 +50,9 @@ case class Cluster(name: String, address: String, port: Int)
 
 @SerialVersionUID(2000L)
 case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)
+
+@SerialVersionUID(3000L)
+object MORE
+
+@SerialVersionUID(4000L)
+object DONE

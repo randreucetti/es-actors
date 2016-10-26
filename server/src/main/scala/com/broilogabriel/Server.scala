@@ -49,6 +49,9 @@ class BulkHandler(bulkProcessor: BulkProcessor) extends Actor {
       indexRequest.source(data.source)
       bulkProcessor.add(indexRequest)
 
+    case DONE =>
+      sender() ! MORE
+
     case some: Int =>
       println(s"Client sent $some, sending PoisonPill now")
       sender() ! PoisonPill
