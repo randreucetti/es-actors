@@ -8,6 +8,7 @@ import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Props
 import org.elasticsearch.client.transport.TransportClient
+import org.joda.time.DateTime
 import scopt.OptionParser
 
 import scala.annotation.tailrec
@@ -15,7 +16,7 @@ import scala.annotation.tailrec
 /**
   * Created by broilogabriel on 24/10/16.
   */
-case class Config(index: String = "",
+case class Config(index: String = "", indices: Seq[String] = Seq.empty,
   source: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
   target: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
   remoteAddress: String = "127.0.0.1", remotePort: Int = 9087, remoteName: String = "RemoteServer")
@@ -25,10 +26,35 @@ object Client {
   val name: String = com.broilogabriel.BuildInfo.name
   val version: String = com.broilogabriel.BuildInfo.version
 
+  def indicesByRange(startDate: String, endDate: String, validate: Boolean = false): Option[Seq[String]] = {
+    try {
+      val sd = DateTime.parse(startDate)
+      val ed = DateTime.parse(endDate)
+      Some(if (!validate) getIndices(sd, ed) else Seq.empty)
+    } catch {
+      case e: IllegalArgumentException => None
+    }
+  }
+
+  @tailrec
+  def getIndices(startDate: DateTime, endDate: DateTime, indices: List[String] = List.empty): List[String] = {
+    if (startDate.getMillis > endDate.getMillis) {
+      indices
+    } else {
+      getIndices(startDate.plusWeeks(1), endDate, indices :+ s"a-${startDate.getWeekyear}-${startDate.getWeekOfWeekyear}")
+    }
+  }
+
   def parser: OptionParser[Config] = new OptionParser[Config]("es-client") {
     head(Client.name, Client.version)
-    opt[String]('i', "index").required().valueName("<index>")
-      .action((x, c) => c.copy(index = x))
+
+    opt[Seq[String]]('i', "indices").valueName("<index1>,<index2>...")
+      .action((x, c) => c.copy(indices = x))
+    opt[(String, String)]('d', "dateRange").validate(
+      d => if (indicesByRange(d._1, d._2, validate = true).isDefined) success else failure("Invalid dates")
+    ).action({
+      case ((start, end), c) => c.copy(indices = indicesByRange(start, end).get)
+    }).keyValueName("<start_date>", "<end_date>")
 
     opt[String]('s', "source").valueName("<source_address>")
       .action((x, c) => c.copy(source = x)).text("default value 'localhost'")
@@ -43,18 +69,26 @@ object Client {
       .action((x, c) => c.copy(targetPort = x)).text("default value 9301")
     opt[String]('u', "targetCluster").required().valueName("<target_cluster>")
       .action((x, c) => c.copy(targetCluster = x))
+
+    help("help").text("prints this usage text")
   }
 
   def main(args: Array[String]): Unit = {
     parser.parse(args, Config()) match {
-      case Some(config) => init(config)
+      case Some(config) => if (config.indices.nonEmpty) {
+        init(config)
+      } else {
+        println("Missing indices. Check help to send index")
+      }
       case None => println("Try again with the arguments")
     }
   }
 
   def init(config: Config): Unit = {
     val actorSystem = ActorSystem.create("MigrationClient")
-    actorSystem.actorOf(Props(classOf[Client], config), "RemoteClient")
+    config.indices.foreach(index =>
+      actorSystem.actorOf(Props(classOf[Client], config.copy(index = index, indices = Seq.empty), "RemoteClient"))
+    )
   }
 
 }
