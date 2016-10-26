@@ -7,6 +7,7 @@ sbt "run-main com.broilogabriel.Server"
 
 ## es-client
 
+```
 Usage: es-client [options]
 
   -i, --index <index>      
@@ -21,7 +22,9 @@ Usage: es-client [options]
   -r, --targetPort <target_port>
                            default value 9301
   -u, --targetCluster <target_cluster>
+```
 
+Example:
 ```
 sbt "run-main com.broilogabriel.Client \
         --index=index_name \
