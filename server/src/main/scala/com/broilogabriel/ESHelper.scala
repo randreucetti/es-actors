@@ -23,19 +23,19 @@ import org.elasticsearch.search.SearchHit
   */
 object Cluster {
 
-  def getCluster(clusterName: String, address: String, port: Int): TransportClient = {
-    val settings = Settings.settingsBuilder().put("cluster.name", clusterName).build()
+  def getCluster(cluster: Cluster): TransportClient = {
+    val settings = Settings.settingsBuilder().put("cluster.name", cluster.name).build()
     TransportClient.builder().settings(settings).build()
-      .addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(address), port))
+      .addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(cluster.address), cluster.port))
   }
 
   def getBulkProcessor(cluster: TransportClient): Builder = {
     BulkProcessor.builder(cluster, new Listener {
       override def beforeBulk(executionId: Long, request: BulkRequest): Unit =
-        println(s"Before $executionId | actions - ${request.numberOfActions()}")
+        println(s"Before $executionId | ${request.estimatedSizeInBytes()} | actions - ${request.numberOfActions()}")
 
       override def afterBulk(executionId: Long, request: BulkRequest, response: BulkResponse): Unit =
-        println(s"Bulk $executionId done in ${response.getTook}")
+        println(s"Bulk $executionId done ${response.getItems.size} in ${response.getTook}")
 
       override def afterBulk(executionId: Long, request: BulkRequest, failure: Throwable): Unit =
         println(s"Bulk $executionId done with failure: ${failure.getMessage}")
@@ -61,4 +61,8 @@ object Cluster {
 
 }
 
+@SerialVersionUID(1000L)
+case class Cluster(name: String, address: String, port: Int)
+
+@SerialVersionUID(2000L)
 case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)
