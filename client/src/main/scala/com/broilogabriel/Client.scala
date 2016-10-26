@@ -90,10 +90,10 @@ object Client {
   }
 
   def init(config: Config): Unit = {
-    val actorSystem = ActorSystem.create("MigrationClient")
+    val actorSystem = ActorSystem.create("MigrationClient").
     println(s"Creating actors for indices ${config.indices}")
     config.indices.foreach(index =>
-      actorSystem.actorOf(Props(classOf[Client], config.copy(index = index, indices = Set.empty)), s"RemoteClient-$index")
+      actorSystem.actorOf(Props(classOf[Client], config.copy(index = index, indices = Set.empty)) , s"RemoteClient-$index")
     )
   }
 
@@ -112,7 +112,7 @@ class Client(config: Config) extends Actor {
 
   override def postStop(): Unit = {
     println("Requested to stop. Will terminate the context.")
-    context.system.terminate()
+//    context.system.terminate()
   }
 
   def receive = {
