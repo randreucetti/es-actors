@@ -8,42 +8,64 @@ import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.remote.Ack
 import org.elasticsearch.client.transport.TransportClient
+import scopt.OptionParser
 
 import scala.annotation.tailrec
 
 /**
   * Created by broilogabriel on 24/10/16.
   */
+
+case class Config(index: String = "",
+  source: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
+  target: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
+  remoteAddress: String = "127.0.0.1", remotePort: Int = 9087, remoteName: String = "RemoteServer")
+
 object Client {
 
-  def mapArgs(args: Array[String]): Map[String, String] = {
-    args.filter(_.startsWith("--")).map(_.split("=") match { case Array(k, v) => k.replaceFirst("--", "") -> v }).toMap
+  def parser: OptionParser[Config] = new OptionParser[Config]("es-client") {
+    head("es-client", "1.1.0")
+    opt[String]('i', "index").required().valueName("<index>")
+      .action((x, c) => c.copy(index = x))
+
+    opt[String]('s', "source").valueName("<source_address>")
+      .action((x, c) => c.copy(source = x)).text("default value 'localhost'")
+    opt[Int]('p', "sourcePort").valueName("<source_port>")
+      .action((x, c) => c.copy(sourcePort = x)).text("default value 9300")
+    opt[String]('c', "sourceCluster").required().valueName("<source_cluster>")
+      .action((x, c) => c.copy(sourceCluster = x))
+
+    opt[String]('t', "target").valueName("<target_address>")
+      .action((x, c) => c.copy(target = x)).text("default value 'localhost'")
+    opt[Int]('r', "targetPort").valueName("<target_port>")
+      .action((x, c) => c.copy(targetPort = x)).text("default value 9301")
+    opt[String]('u', "targetCluster").required().valueName("<target_cluster>")
+      .action((x, c) => c.copy(targetCluster = x))
   }
 
   def main(args: Array[String]): Unit = {
-
-    val margs = mapArgs(args)
-    if (!margs.contains("index") || !margs.contains("cluster") || !margs.contains("host") || !margs.contains("port")) {
-      System.exit(0)
+    parser.parse(args, Config()) match {
+      case Some(config) => init(config)
+      case None => println("Try again with the arguments")
     }
+  }
 
-    val cluster = Cluster.getCluster(margs("cluster"), margs("host"), margs("port").toInt)
-    val index = margs("index")
-    val scrollId = Cluster.getScrollId(cluster, index)
-
+  def init(config: Config): Unit = {
     val actorSystem = ActorSystem.create("MigrationClient")
-
-    val actor = actorSystem.actorOf(Props(classOf[Client], cluster, index, scrollId), "RemoteClient")
-    actor ! "Let this shit begin"
-
+    val actor = actorSystem.actorOf(Props(classOf[Client], config), "RemoteClient")
+    actor ! "Magic?"
   }
 
 }
 
-class Client(cluster: TransportClient, index: String, scrollId: String) extends Actor {
+class Client(config: Config) extends Actor {
+
+  val cluster = Cluster.getCluster(config.sourceCluster, config.source, config.sourcePort)
+  val scrollId = Cluster.getScrollId(cluster, config.index)
 
   override def preStart(): Unit = {
-    val remote = context.actorSelection("akka.tcp://MigrationServer@127.0.0.1:9087/user/RemoteServer")
+    val path = s"akka.tcp://MigrationServer@${config.remoteAddress}:${config.remotePort}/user/${config.remoteName}"
+    val remote = context.actorSelection(path)
     remote ! Ack
   }
 
@@ -51,7 +73,7 @@ class Client(cluster: TransportClient, index: String, scrollId: String) extends 
 
     case uuid: UUID =>
       println(uuid)
-      self ! sendWhile(cluster, index, scrollId, sender(), uuid)
+      self ! sendWhile(cluster, config.index, scrollId, sender(), uuid)
 
     case some: Int =>
       //      context.stop(self)

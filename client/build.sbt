@@ -11,3 +11,5 @@ libraryDependencies += "com.typesafe.akka" %% "akka-testkit" % "2.4.11" % "test"
 libraryDependencies += "com.typesafe.akka" %% "akka-remote" % "2.4.11"
 
 libraryDependencies += "org.elasticsearch" % "elasticsearch" % "1.7.5"
+
+libraryDependencies += "com.github.scopt" %% "scopt" % "3.5.0"
