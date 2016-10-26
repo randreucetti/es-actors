@@ -1,6 +1,7 @@
 package com.broilogabriel
 
 import java.util.UUID
+import java.util.concurrent.TimeUnit._
 
 import akka.actor.Actor
 import akka.actor.ActorRef
@@ -14,7 +15,6 @@ import scala.annotation.tailrec
 /**
   * Created by broilogabriel on 24/10/16.
   */
-
 case class Config(index: String = "",
   source: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
   target: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
@@ -22,8 +22,11 @@ case class Config(index: String = "",
 
 object Client {
 
+  val name: String = com.broilogabriel.BuildInfo.name
+  val version: String = com.broilogabriel.BuildInfo.version
+
   def parser: OptionParser[Config] = new OptionParser[Config]("es-client") {
-    head("es-client", "1.1.0")
+    head(Client.name, Client.version)
     opt[String]('i', "index").required().valueName("<index>")
       .action((x, c) => c.copy(index = x))
 
@@ -51,8 +54,7 @@ object Client {
 
   def init(config: Config): Unit = {
     val actorSystem = ActorSystem.create("MigrationClient")
-    val actor = actorSystem.actorOf(Props(classOf[Client], config), "RemoteClient")
-    actor ! "Magic?"
+    actorSystem.actorOf(Props(classOf[Client], config), "RemoteClient")
   }
 
 }
@@ -65,32 +67,40 @@ class Client(config: Config) extends Actor {
   override def preStart(): Unit = {
     val path = s"akka.tcp://MigrationServer@${config.remoteAddress}:${config.remotePort}/user/${config.remoteName}"
     val remote = context.actorSelection(path)
-    remote ! Cluster(config.sourceCluster, config.source, config.sourcePort)
+    remote ! Cluster(config.targetCluster, config.target, config.targetPort)
+  }
+
+  override def postStop(): Unit = {
+    println("Requested to stop. Will terminate the context.")
+    context.system.terminate()
   }
 
   def receive = {
 
     case uuid: UUID =>
-      println(uuid)
-      self ! sendWhile(cluster, config.index, scrollId, sender(), uuid)
-
-    case some: Int =>
-      //      context.stop(self)
-      //      context.system.terminate()
+      println(s"Server is waiting to process $uuid")
+      val totalSent: Int = sendWhile(System.currentTimeMillis(), cluster, config.index, scrollId, sender(), uuid)
+      sender() ! totalSent
       println("Client done should wait for server.")
   }
 
+  def formatElapsedTime(millis: Long): String = {
+    val hours = MILLISECONDS.toHours(millis)
+    val minutes = MILLISECONDS.toMinutes(millis)
+    f"$hours%02d:${minutes - HOURS.toMinutes(hours)}%02d:${MILLISECONDS.toSeconds(millis) - MINUTES.toSeconds(minutes)}%02d"
+  }
+
   @tailrec
-  private def sendWhile(cluster: TransportClient, index: String, scrollId: String, actor: ActorRef, uuid: UUID, total: Int = 0): Int = {
+  private def sendWhile(startTime: Long, cluster: TransportClient, index: String, scrollId: String, actor: ActorRef, uuid: UUID, total: Int = 0): Int = {
     val hits = Cluster.scroller(index, scrollId, cluster)
     if (hits.nonEmpty) {
       hits.foreach(hit => {
         val data = TransferObject(uuid, index, hit.getType, hit.getId, hit.getSourceAsString)
         actor ! data
       })
-      val sent = hits.size + total
-      println(s"Total sent: $sent")
-      sendWhile(cluster, index, scrollId, actor, uuid, sent)
+      val sent = hits.length + total
+      println(s"Sent $sent in ${formatElapsedTime(System.currentTimeMillis() - startTime)}")
+      sendWhile(startTime, cluster, index, scrollId, actor, uuid, sent)
     } else {
       total
     }

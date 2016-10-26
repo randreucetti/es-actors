@@ -1,8 +1,15 @@
 name := "es-client"
 
-version := "1.1.0"
+version := "1.1.1"
 
 scalaVersion := "2.11.8"
+
+lazy val root = (project in file(".")).
+  enablePlugins(BuildInfoPlugin).
+  settings(
+    buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
+    buildInfoPackage := "com.broilogabriel"
+  )
 
 libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.11"
 

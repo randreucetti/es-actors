@@ -4,6 +4,7 @@ import java.util.UUID
 
 import akka.actor.Actor
 import akka.actor.ActorSystem
+import akka.actor.PoisonPill
 import akka.actor.Props
 import org.elasticsearch.action.bulk.BulkProcessor
 import org.elasticsearch.action.index.IndexRequest
@@ -23,11 +24,10 @@ class Server extends Actor {
 
     case cluster: Cluster =>
       val uuid = UUID.randomUUID
+      println(s"Received cluster config: $cluster")
       val handler = context.actorOf(Props(classOf[BulkHandler], Cluster.getBulkProcessor(Cluster.getCluster(cluster))
         .build()), name = uuid.toString)
       handler.forward(uuid)
-
-    //      sender() ! 1
 
     case data: TransferObject => self.forward(data)
 
@@ -48,6 +48,10 @@ class BulkHandler(bulkProcessor: BulkProcessor) extends Actor {
       val indexRequest = new IndexRequest(data.index, data.hitType, data.hitId)
       indexRequest.source(data.source)
       bulkProcessor.add(indexRequest)
+
+    case some: Int =>
+      println(s"Client sent $some, sending PoisonPill now")
+      sender() ! PoisonPill
 
     case other => println(s"Something else here? $other")
   }
