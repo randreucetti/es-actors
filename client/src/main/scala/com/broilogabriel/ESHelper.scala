@@ -16,9 +16,9 @@ import org.elasticsearch.search.SearchHit
   */
 object Cluster {
 
-  def getCluster(clusterName: String, address: String, port: Int): TransportClient = {
-    val settings = ImmutableSettings.settingsBuilder().put("cluster.name", clusterName).build()
-    new TransportClient(settings).addTransportAddress(new InetSocketTransportAddress(address, port))
+  def getCluster(cluster: Cluster): TransportClient = {
+    val settings = ImmutableSettings.settingsBuilder().put("cluster.name", cluster.name).build()
+    new TransportClient(settings).addTransportAddress(new InetSocketTransportAddress(cluster.address, cluster.port))
   }
 
   def getScrollId(cluster: TransportClient, index: String, size: Int = 5000) = {
@@ -39,5 +39,7 @@ object Cluster {
   }
 
 }
+
+case class Cluster(name: String, address: String, port: Int)
 
 case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)

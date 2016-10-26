@@ -23,10 +23,10 @@ import org.elasticsearch.search.SearchHit
   */
 object Cluster {
 
-  def getCluster(clusterName: String, address: String, port: Int): TransportClient = {
-    val settings = Settings.settingsBuilder().put("cluster.name", clusterName).build()
+  def getCluster(cluster: Cluster): TransportClient = {
+    val settings = Settings.settingsBuilder().put("cluster.name", cluster.name).build()
     TransportClient.builder().settings(settings).build()
-      .addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(address), port))
+      .addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(cluster.address), cluster.port))
   }
 
   def getBulkProcessor(cluster: TransportClient): Builder = {
@@ -60,5 +60,7 @@ object Cluster {
   }
 
 }
+
+case class Cluster(name: String, address: String, port: Int)
 
 case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)

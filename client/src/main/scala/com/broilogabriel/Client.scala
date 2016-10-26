@@ -6,7 +6,6 @@ import akka.actor.Actor
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Props
-import akka.remote.Ack
 import org.elasticsearch.client.transport.TransportClient
 import scopt.OptionParser
 
@@ -60,13 +59,13 @@ object Client {
 
 class Client(config: Config) extends Actor {
 
-  val cluster = Cluster.getCluster(config.sourceCluster, config.source, config.sourcePort)
+  val cluster = Cluster.getCluster(Cluster(config.sourceCluster, config.source, config.sourcePort))
   val scrollId = Cluster.getScrollId(cluster, config.index)
 
   override def preStart(): Unit = {
     val path = s"akka.tcp://MigrationServer@${config.remoteAddress}:${config.remotePort}/user/${config.remoteName}"
     val remote = context.actorSelection(path)
-    remote ! Ack
+    remote ! Cluster(config.sourceCluster, config.source, config.sourcePort)
   }
 
   def receive = {
