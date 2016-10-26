@@ -134,7 +134,6 @@ class Client(config: Config) extends Actor {
         if (finished) {
           sender() ! 1
         }
-        println("Client done should wait for server.")
       } else {
         println(s"Invalid index ${config.index}")
         sender() ! s"Invalid index ${config.index}"
