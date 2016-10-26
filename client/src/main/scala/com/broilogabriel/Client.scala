@@ -4,6 +4,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit._
 
 import akka.actor._
+import com.broilogabriel.Reaper.WatchMe
 import org.elasticsearch.client.transport.TransportClient
 import org.joda.time.{DateTime, DateTimeConstants}
 import scopt.OptionParser
@@ -14,9 +15,9 @@ import scala.annotation.tailrec
   * Created by broilogabriel on 24/10/16.
   */
 case class Config(index: String = "", indices: Set[String] = Set.empty,
-  source: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
-  target: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
-  remoteAddress: String = "127.0.0.1", remotePort: Int = 9087, remoteName: String = "RemoteServer")
+                  source: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
+                  target: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
+                  remoteAddress: String = "127.0.0.1", remotePort: Int = 9087, remoteName: String = "RemoteServer")
 
 object Client {
 
@@ -91,9 +92,12 @@ object Client {
 
   def init(config: Config): Unit = {
     val actorSystem = ActorSystem.create("MigrationClient")
+    val reaper = actorSystem.actorOf(Props(new ProductionReaper()))
     println(s"Creating actors for indices ${config.indices}")
-    config.indices.foreach(index =>
-      actorSystem.actorOf(Props(classOf[Client], config.copy(index = index, indices = Set.empty)) , s"RemoteClient-$index")
+    config.indices.foreach(index => {
+      val actorRef = actorSystem.actorOf(Props(classOf[Client], config.copy(index = index, indices = Set.empty)), s"RemoteClient-$index")
+      reaper ! WatchMe(actorRef)
+    }
     )
   }
 
@@ -111,14 +115,13 @@ class Client(config: Config) extends Actor {
   }
 
   override def postStop(): Unit = {
-    println("Requested to stop. Will terminate the context.")
-//    context.system.terminate()
+    println("Requested to stop.")
   }
 
   def receive = {
     case MORE =>
       val finished = sendWhile(System.currentTimeMillis(), cluster, config.index, scrollId, sender(), uuid)
-      if(finished) {
+      if (finished) {
         sender() ! 1
       }
     case uuidInc: UUID =>
@@ -128,7 +131,7 @@ class Client(config: Config) extends Actor {
       if (Cluster.checkIndex(cluster, config.index)) {
         scrollId = Cluster.getScrollId(cluster, config.index)
         val finished = sendWhile(System.currentTimeMillis(), cluster, config.index, scrollId, sender(), uuid)
-        if(finished) {
+        if (finished) {
           sender() ! 1
         }
         println("Client done should wait for server.")
