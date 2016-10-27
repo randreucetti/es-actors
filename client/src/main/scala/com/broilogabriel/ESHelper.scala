@@ -50,3 +50,7 @@ case class Cluster(name: String, address: String, port: Int)
 
 @SerialVersionUID(2000L)
 case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)
+
+object MORE extends Serializable
+
+object DONE extends Serializable
