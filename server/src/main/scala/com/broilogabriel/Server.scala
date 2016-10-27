@@ -41,6 +41,7 @@ class BulkHandler(listener: BulkListener) extends Actor with LazyLogging {
   val bulkProcessor = Cluster.getBulkProcessor(listener).build()
 
   override def postStop(): Unit = {
+    logger.info(s"Stopping BulkHandler ${self.path.name}")
     bulkProcessor.flush()
     listener.client.close()
   }
@@ -62,6 +63,8 @@ class BulkHandler(listener: BulkListener) extends Actor with LazyLogging {
     case some: Int =>
       logger.info(s"Client sent $some, sending PoisonPill now")
       sender() ! PoisonPill
+    //      Thread.sleep(30000)
+    //      self ! PoisonPill
 
     case other => logger.info(s"Something else here? $other")
   }

@@ -17,9 +17,14 @@ import scala.annotation.tailrec
   * Created by broilogabriel on 24/10/16.
   */
 case class Config(index: String = "", indices: Set[String] = Set.empty,
-  source: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
-  target: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
-  remoteAddress: String = "127.0.0.1", remotePort: Int = 9087, remoteName: String = "RemoteServer")
+  sourceAddress: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
+  targetAddress: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
+  remoteAddress: String = "127.0.0.1", remotePort: Int = 9087, remoteName: String = "RemoteServer") {
+
+  def source: Cluster = Cluster(name = sourceCluster, address = sourceAddress, port = sourcePort)
+
+  def target: Cluster = Cluster(name = targetCluster, address = targetAddress, port = targetPort)
+}
 
 object Client extends LazyLogging {
 
@@ -66,14 +71,14 @@ object Client extends LazyLogging {
     }).keyValueName("<start_date>", "<end_date>").text("Start date value should be lower than end date.")
 
     opt[String]('s', "source").valueName("<source_address>")
-      .action((x, c) => c.copy(source = x)).text("default value 'localhost'")
+      .action((x, c) => c.copy(sourceAddress = x)).text("default value 'localhost'")
     opt[Int]('p', "sourcePort").valueName("<source_port>")
       .action((x, c) => c.copy(sourcePort = x)).text("default value 9300")
     opt[String]('c', "sourceCluster").required().valueName("<source_cluster>")
       .action((x, c) => c.copy(sourceCluster = x))
 
     opt[String]('t', "target").valueName("<target_address>")
-      .action((x, c) => c.copy(target = x)).text("default value 'localhost'")
+      .action((x, c) => c.copy(targetAddress = x)).text("default value 'localhost'")
     opt[Int]('r', "targetPort").valueName("<target_port>")
       .action((x, c) => c.copy(targetPort = x)).text("default value 9301")
     opt[String]('u', "targetCluster").required().valueName("<target_cluster>")
@@ -99,7 +104,7 @@ object Client extends LazyLogging {
 
   def init(config: Config): Unit = {
     val actorSystem = ActorSystem.create("MigrationClient")
-    val reaper = actorSystem.actorOf(Props(new ProductionReaper()))
+    val reaper = actorSystem.actorOf(Props(classOf[ProductionReaper]))
     logger.info(s"Creating actors for indices ${config.indices}")
     config.indices.foreach(index => {
       val actorRef = actorSystem.actorOf(Props(classOf[Client], config.copy(index = index, indices = Set.empty)), s"RemoteClient-$index")
@@ -112,13 +117,13 @@ object Client extends LazyLogging {
 
 class Client(config: Config) extends Actor with LazyLogging {
   var scrollId: String = ""
-  var cluster: TransportClient = null
-  var uuid: UUID = null
+  var cluster: TransportClient = _
+  var uuid: UUID = _
 
   override def preStart(): Unit = {
     val path = s"akka.tcp://MigrationServer@${config.remoteAddress}:${config.remotePort}/user/${config.remoteName}"
     val remote = context.actorSelection(path)
-    remote ! Cluster(config.targetCluster, config.target, config.targetPort)
+    remote ! config.target
   }
 
   override def postStop(): Unit = {
@@ -126,15 +131,17 @@ class Client(config: Config) extends Actor with LazyLogging {
   }
 
   def receive = {
+
     case MORE =>
       val finished = sendWhile(System.currentTimeMillis(), cluster, config.index, scrollId, sender(), uuid)
       if (finished) {
         sender() ! 1
       }
+
     case uuidInc: UUID =>
       uuid = uuidInc
       logger.info(s"Server is waiting to process $uuid")
-      cluster = Cluster.getCluster(Cluster(config.sourceCluster, config.source, config.sourcePort))
+      cluster = Cluster.getCluster(config.source)
       if (Cluster.checkIndex(cluster, config.index)) {
         scrollId = Cluster.getScrollId(cluster, config.index)
         val finished = sendWhile(System.currentTimeMillis(), cluster, config.index, scrollId, sender(), uuid)
