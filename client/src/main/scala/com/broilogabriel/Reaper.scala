@@ -3,15 +3,23 @@ package com.broilogabriel
 /**
   * Created by ross on 26/10/16.
   */
-import akka.actor.{Actor, ActorRef, Terminated}
+
+import akka.actor.Actor
+import akka.actor.ActorRef
+import akka.actor.Terminated
+import com.typesafe.scalalogging.LazyLogging
+
 import scala.collection.mutable.ArrayBuffer
 
 object Reaper {
+
   // Used by others to register an Actor for watching
   case class WatchMe(ref: ActorRef)
+
 }
 
 abstract class Reaper extends Actor {
+
   import Reaper._
 
   // Keep track of what we're watching
@@ -32,10 +40,10 @@ abstract class Reaper extends Actor {
   }
 }
 
-class ProductionReaper extends Reaper {
+class ProductionReaper extends Reaper with LazyLogging {
   // Shutdown
   def allSoulsReaped(): Unit = {
-    println("all done, reaping souls")
+    logger.info("all done, reaping souls")
     context.system.terminate()
   }
 }

@@ -5,8 +5,10 @@ import java.util.concurrent.TimeUnit._
 
 import akka.actor._
 import com.broilogabriel.Reaper.WatchMe
+import com.typesafe.scalalogging.LazyLogging
 import org.elasticsearch.client.transport.TransportClient
-import org.joda.time.{DateTime, DateTimeConstants}
+import org.joda.time.DateTime
+import org.joda.time.DateTimeConstants
 import scopt.OptionParser
 
 import scala.annotation.tailrec
@@ -15,21 +17,24 @@ import scala.annotation.tailrec
   * Created by broilogabriel on 24/10/16.
   */
 case class Config(index: String = "", indices: Set[String] = Set.empty,
-                  source: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
-                  target: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
-                  remoteAddress: String = "127.0.0.1", remotePort: Int = 9087, remoteName: String = "RemoteServer")
+  source: String = "localhost", sourcePort: Int = 9300, sourceCluster: String = "",
+  target: String = "localhost", targetPort: Int = 9301, targetCluster: String = "",
+  remoteAddress: String = "127.0.0.1", remotePort: Int = 9087, remoteName: String = "RemoteServer")
 
-object Client {
+object Client extends LazyLogging {
 
-  val name: String = com.broilogabriel.BuildInfo.name
-  val version: String = com.broilogabriel.BuildInfo.version
+  def formatElapsedTime(millis: Long): String = {
+    val hours = MILLISECONDS.toHours(millis)
+    val minutes = MILLISECONDS.toMinutes(millis)
+    f"$hours%02d:${minutes - HOURS.toMinutes(hours)}%02d:${MILLISECONDS.toSeconds(millis) - MINUTES.toSeconds(minutes)}%02d"
+  }
 
   def indicesByRange(startDate: String, endDate: String, validate: Boolean = false): Option[Set[String]] = {
     try {
       val sd = DateTime.parse(startDate).withDayOfWeek(DateTimeConstants.SUNDAY)
-      println(sd)
+      logger.info(s"Start date: $sd")
       val ed = DateTime.parse(endDate).withDayOfWeek(DateTimeConstants.SUNDAY)
-      println(ed)
+      logger.info(s"End date: $ed")
       if (sd.getMillis < ed.getMillis) {
         Some(if (!validate) getIndices(sd, ed) else Set.empty)
       } else {
@@ -50,7 +55,7 @@ object Client {
   }
 
   def parser: OptionParser[Config] = new OptionParser[Config]("es-client") {
-    head(Client.name, Client.version)
+    head(BuildInfo.name, BuildInfo.version)
 
     opt[Seq[String]]('i', "indices").valueName("<index1>,<index2>...")
       .action((x, c) => c.copy(indices = x.toSet))
@@ -75,8 +80,10 @@ object Client {
       .action((x, c) => c.copy(targetCluster = x))
 
     opt[String]("remoteAddress").valueName("<remote_address>").action((x, c) => c.copy(remoteAddress = x))
+    opt[Int]("remotePort").valueName("<remote_port>").action((x, c) => c.copy(remotePort = x))
+    opt[String]("remoteName").valueName("<remote_name>").action((x, c) => c.copy(remoteName = x))
 
-    help("help").text("prints this usage text")
+    help("help").text("Prints the usage text.")
   }
 
   def main(args: Array[String]): Unit = {
@@ -84,16 +91,16 @@ object Client {
       case Some(config) => if (config.indices.nonEmpty) {
         init(config)
       } else {
-        println("Missing indices. Check help to send index")
+        logger.info("Missing indices. Check help to send index")
       }
-      case None => println("Try again with the arguments")
+      case None => logger.info("Try again with the arguments")
     }
   }
 
   def init(config: Config): Unit = {
     val actorSystem = ActorSystem.create("MigrationClient")
     val reaper = actorSystem.actorOf(Props(new ProductionReaper()))
-    println(s"Creating actors for indices ${config.indices}")
+    logger.info(s"Creating actors for indices ${config.indices}")
     config.indices.foreach(index => {
       val actorRef = actorSystem.actorOf(Props(classOf[Client], config.copy(index = index, indices = Set.empty)), s"RemoteClient-$index")
       reaper ! WatchMe(actorRef)
@@ -103,7 +110,7 @@ object Client {
 
 }
 
-class Client(config: Config) extends Actor {
+class Client(config: Config) extends Actor with LazyLogging {
   var scrollId: String = ""
   var cluster: TransportClient = null
   var uuid: UUID = null
@@ -115,7 +122,7 @@ class Client(config: Config) extends Actor {
   }
 
   override def postStop(): Unit = {
-    println("Requested to stop.")
+    logger.info("Requested to stop.")
   }
 
   def receive = {
@@ -126,7 +133,7 @@ class Client(config: Config) extends Actor {
       }
     case uuidInc: UUID =>
       uuid = uuidInc
-      println(s"Server is waiting to process $uuid")
+      logger.info(s"Server is waiting to process $uuid")
       cluster = Cluster.getCluster(Cluster(config.sourceCluster, config.source, config.sourcePort))
       if (Cluster.checkIndex(cluster, config.index)) {
         scrollId = Cluster.getScrollId(cluster, config.index)
@@ -135,17 +142,11 @@ class Client(config: Config) extends Actor {
           sender() ! 1
         }
       } else {
-        println(s"Invalid index ${config.index}")
+        logger.info(s"Invalid index ${config.index}")
         sender() ! s"Invalid index ${config.index}"
         self ! PoisonPill
       }
 
-  }
-
-  def formatElapsedTime(millis: Long): String = {
-    val hours = MILLISECONDS.toHours(millis)
-    val minutes = MILLISECONDS.toMinutes(millis)
-    f"$hours%02d:${minutes - HOURS.toMinutes(hours)}%02d:${MILLISECONDS.toSeconds(millis) - MINUTES.toSeconds(minutes)}%02d"
   }
 
   private def sendWhile(startTime: Long, cluster: TransportClient, index: String, scrollId: String, actor: ActorRef, uuid: UUID, total: Int = 0): Boolean = {
@@ -156,7 +157,7 @@ class Client(config: Config) extends Actor {
         actor ! data
       })
       val sent = hits.length + total
-      println(s"Sent $sent in ${formatElapsedTime(System.currentTimeMillis() - startTime)}")
+      logger.info(s"Sent $sent in ${Client.formatElapsedTime(System.currentTimeMillis() - startTime)}")
       actor ! DONE
       false
     } else {

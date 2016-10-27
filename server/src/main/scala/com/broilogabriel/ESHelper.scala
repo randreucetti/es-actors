@@ -3,9 +3,9 @@ package com.broilogabriel
 import java.net.InetAddress
 import java.util.UUID
 
+import com.typesafe.scalalogging.LazyLogging
 import org.elasticsearch.action.bulk.BulkProcessor
 import org.elasticsearch.action.bulk.BulkProcessor.Builder
-import org.elasticsearch.action.bulk.BulkProcessor.Listener
 import org.elasticsearch.action.bulk.BulkRequest
 import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.client.transport.TransportClient
@@ -29,20 +29,6 @@ object Cluster {
       .addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(cluster.address), cluster.port))
   }
 
-  def getBulkProcessor(cluster: TransportClient): Builder = {
-    BulkProcessor.builder(cluster, new Listener {
-      override def beforeBulk(executionId: Long, request: BulkRequest): Unit =
-        println(s"Before $executionId | ${request.estimatedSizeInBytes()} | actions - ${request.numberOfActions()}")
-
-      override def afterBulk(executionId: Long, request: BulkRequest, response: BulkResponse): Unit =
-        println(s"Bulk $executionId done ${response.getItems.size} in ${response.getTook}")
-
-      override def afterBulk(executionId: Long, request: BulkRequest, failure: Throwable): Unit =
-        println(s"Bulk $executionId done with failure: ${failure.getMessage}")
-
-    }).setBulkActions(50000).setBulkSize(new ByteSizeValue(25, ByteSizeUnit.MB))
-  }
-
   def getScrollId(cluster: TransportClient, index: String, size: Int = 5000) = {
     cluster.prepareSearch(index)
       .setScroll(TimeValue.timeValueMinutes(5))
@@ -59,6 +45,25 @@ object Cluster {
     partial.getHits.hits()
   }
 
+  def getBulkProcessor(cluster: TransportClient, listener: BulkProcessor.Listener): Builder = {
+    BulkProcessor.builder(cluster, listener)
+      .setBulkActions(50000)
+      .setBulkSize(new ByteSizeValue(25, ByteSizeUnit.MB))
+  }
+
+}
+
+case class BulkListener() extends BulkProcessor.Listener with LazyLogging {
+
+  override def beforeBulk(executionId: Long, request: BulkRequest): Unit =
+    logger.info(s"B: $executionId | ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} | actions - ${request.numberOfActions()}")
+
+  override def afterBulk(executionId: Long, request: BulkRequest, response: BulkResponse): Unit =
+    logger.info(s"A: $executionId | ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} | took - ${response.getTook}")
+
+  override def afterBulk(executionId: Long, request: BulkRequest, failure: Throwable): Unit =
+    logger.info(s"Bulk $executionId done with failure: ${failure.getMessage}")
+
 }
 
 @SerialVersionUID(1000L)
@@ -67,6 +72,6 @@ case class Cluster(name: String, address: String, port: Int)
 @SerialVersionUID(2000L)
 case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)
 
-object MORE  extends Serializable
+object MORE extends Serializable
 
-object DONE  extends Serializable
+object DONE extends Serializable
