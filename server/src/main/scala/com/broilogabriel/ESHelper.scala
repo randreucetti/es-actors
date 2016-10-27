@@ -45,24 +45,32 @@ object Cluster {
     partial.getHits.hits()
   }
 
-  def getBulkProcessor(cluster: TransportClient, listener: BulkProcessor.Listener): Builder = {
-    BulkProcessor.builder(cluster, listener)
+  def getBulkProcessor(listener: BulkListener): Builder = {
+    BulkProcessor.builder(listener.client, listener)
       .setBulkActions(50000)
       .setBulkSize(new ByteSizeValue(25, ByteSizeUnit.MB))
+      .setFlushInterval(TimeValue.timeValueSeconds(30))
   }
 
 }
 
-case class BulkListener() extends BulkProcessor.Listener with LazyLogging {
+case class BulkListener(transportClient: TransportClient) extends BulkProcessor.Listener with LazyLogging {
 
-  override def beforeBulk(executionId: Long, request: BulkRequest): Unit =
-    logger.info(s"B: $executionId | ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} | actions - ${request.numberOfActions()}")
+  def client: TransportClient = transportClient
 
-  override def afterBulk(executionId: Long, request: BulkRequest, response: BulkResponse): Unit =
-    logger.info(s"A: $executionId | ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} | took - ${response.getTook}")
+  override def beforeBulk(executionId: Long, request: BulkRequest): Unit = {
+    logger.info(s"B: $executionId | ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} " +
+      s"| actions - ${request.numberOfActions()}")
+  }
 
-  override def afterBulk(executionId: Long, request: BulkRequest, failure: Throwable): Unit =
+  override def afterBulk(executionId: Long, request: BulkRequest, response: BulkResponse): Unit = {
+    logger.info(s"A: $executionId | ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} " +
+      s"| took - ${response.getTook}")
+  }
+
+  override def afterBulk(executionId: Long, request: BulkRequest, failure: Throwable): Unit = {
     logger.info(s"Bulk $executionId done with failure: ${failure.getMessage}")
+  }
 
 }
 

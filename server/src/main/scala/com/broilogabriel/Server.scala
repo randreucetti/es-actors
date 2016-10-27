@@ -7,7 +7,6 @@ import akka.actor.ActorSystem
 import akka.actor.PoisonPill
 import akka.actor.Props
 import com.typesafe.scalalogging.LazyLogging
-import org.elasticsearch.action.bulk.BulkProcessor
 import org.elasticsearch.action.index.IndexRequest
 
 /**
@@ -27,7 +26,7 @@ class Server extends Actor with LazyLogging {
       val uuid = UUID.randomUUID
       logger.info(s"Received cluster config: $cluster")
       context.actorOf(
-        Props(classOf[BulkHandler], Cluster.getBulkProcessor(Cluster.getCluster(cluster), BulkListener()).build()),
+        Props(classOf[BulkHandler], BulkListener(Cluster.getCluster(cluster))),
         name = uuid.toString
       ).forward(uuid)
 
@@ -37,7 +36,14 @@ class Server extends Actor with LazyLogging {
 
 }
 
-class BulkHandler(bulkProcessor: BulkProcessor) extends Actor with LazyLogging {
+class BulkHandler(listener: BulkListener) extends Actor with LazyLogging {
+
+  val bulkProcessor = Cluster.getBulkProcessor(listener).build()
+
+  override def postStop(): Unit = {
+    bulkProcessor.flush()
+    listener.client.close()
+  }
 
   def receive = {
 
@@ -54,7 +60,6 @@ class BulkHandler(bulkProcessor: BulkProcessor) extends Actor with LazyLogging {
       sender() ! MORE
 
     case some: Int =>
-      bulkProcessor.flush()
       logger.info(s"Client sent $some, sending PoisonPill now")
       sender() ! PoisonPill
 
