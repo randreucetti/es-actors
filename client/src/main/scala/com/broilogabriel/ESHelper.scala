@@ -2,6 +2,7 @@ package com.broilogabriel
 
 import java.util.UUID
 
+import org.elasticsearch.action.search.SearchResponse
 import org.elasticsearch.action.search.SearchType
 import org.elasticsearch.client.transport.TransportClient
 import org.elasticsearch.common.settings.ImmutableSettings
@@ -26,13 +27,13 @@ object Cluster {
       .execute().actionGet().isExists
   }
 
-  def getScrollId(cluster: TransportClient, index: String, size: Int = 5000) = {
+  def getScrollId(cluster: TransportClient, index: String, size: Int = 5000): SearchResponse = {
     cluster.prepareSearch(index)
       .setSearchType(SearchType.SCAN)
       .setScroll(TimeValue.timeValueMinutes(5))
       .setQuery(QueryBuilders.matchAllQuery)
       .setSize(size)
-      .execute().actionGet().getScrollId
+      .execute().actionGet()
   }
 
   def scroller(index: String, scrollId: String, cluster: TransportClient): Array[SearchHit] = {
@@ -46,7 +47,7 @@ object Cluster {
 }
 
 @SerialVersionUID(1000L)
-case class Cluster(name: String, address: String, port: Int)
+case class Cluster(name: String, address: String, port: Int, totalHits: Long = 0)
 
 @SerialVersionUID(2000L)
 case class TransferObject(uuid: UUID, index: String, hitType: String, hitId: String, source: String)

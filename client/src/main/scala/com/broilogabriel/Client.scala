@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit._
 import akka.actor._
 import com.broilogabriel.Reaper.WatchMe
 import com.typesafe.scalalogging.LazyLogging
+import org.elasticsearch.action.search.SearchResponse
 import org.elasticsearch.client.transport.TransportClient
 import org.joda.time.DateTime
 import org.joda.time.DateTimeConstants
@@ -40,7 +41,7 @@ object Client extends LazyLogging {
       logger.info(s"Start date: $sd")
       val ed = DateTime.parse(endDate).withDayOfWeek(DateTimeConstants.SUNDAY)
       logger.info(s"End date: $ed")
-      if (sd.getMillis < ed.getMillis) {
+      if (sd.getMillis <= ed.getMillis) {
         Some(if (!validate) getIndices(sd, ed) else Set.empty)
       } else {
         None
@@ -116,60 +117,47 @@ object Client extends LazyLogging {
 }
 
 class Client(config: Config) extends Actor with LazyLogging {
-  var scrollId: String = ""
+
+  var scroll: SearchResponse = _
   var cluster: TransportClient = _
   var uuid: UUID = _
 
   override def preStart(): Unit = {
-    val path = s"akka.tcp://MigrationServer@${config.remoteAddress}:${config.remotePort}/user/${config.remoteName}"
-    val remote = context.actorSelection(path)
-    remote ! config.target
+    cluster = Cluster.getCluster(config.source)
+    scroll = Cluster.getScrollId(cluster, config.index)
+    if (Cluster.checkIndex(cluster, config.index)) {
+      val path = s"akka.tcp://MigrationServer@${config.remoteAddress}:${config.remotePort}/user/${config.remoteName}"
+      val remote = context.actorSelection(path)
+      remote ! config.target.copy(totalHits = scroll.getHits.getTotalHits)
+      logger.info(s"Connected to remote for ${config.index}")
+    } else {
+      logger.info(s"Invalid index ${config.index}")
+      self ! PoisonPill
+    }
   }
 
   override def postStop(): Unit = {
-    logger.info("Requested to stop.")
+    logger.info(s"${config.index} Requested to stop.")
+    cluster.close()
   }
 
-  def receive = {
+  override def receive = {
 
     case MORE =>
-      val finished = sendWhile(System.currentTimeMillis(), cluster, config.index, scrollId, sender(), uuid)
-      if (finished) {
-        sender() ! 1
+      logger.info(s"I want more ${sender.path.name}")
+      val hits = Cluster.scroller(config.index, scroll.getScrollId, cluster)
+      if (hits.nonEmpty) {
+        hits.foreach(hit => sender ! TransferObject(uuid, config.index, hit.getType, hit.getId, hit.getSourceAsString))
+        logger.info(s"${config.index} Sent ${hits.length} of ${scroll.getHits.getTotalHits} | ${config.index}")
+      } else {
+        sender ! DONE
       }
 
     case uuidInc: UUID =>
       uuid = uuidInc
-      logger.info(s"Server is waiting to process $uuid")
-      cluster = Cluster.getCluster(config.source)
-      if (Cluster.checkIndex(cluster, config.index)) {
-        scrollId = Cluster.getScrollId(cluster, config.index)
-        val finished = sendWhile(System.currentTimeMillis(), cluster, config.index, scrollId, sender(), uuid)
-        if (finished) {
-          sender() ! 1
-        }
-      } else {
-        logger.info(s"Invalid index ${config.index}")
-        sender() ! s"Invalid index ${config.index}"
-        self ! PoisonPill
-      }
+      logger.info(s"${config.index} Scroll ${scroll.getScrollId.substring(0, 10)} - ${scroll.getHits.getTotalHits}")
+      self.forward(MORE)
 
-  }
-
-  private def sendWhile(startTime: Long, cluster: TransportClient, index: String, scrollId: String, actor: ActorRef, uuid: UUID, total: Int = 0): Boolean = {
-    val hits = Cluster.scroller(index, scrollId, cluster)
-    if (hits.nonEmpty) {
-      hits.foreach(hit => {
-        val data = TransferObject(uuid, index, hit.getType, hit.getId, hit.getSourceAsString)
-        actor ! data
-      })
-      val sent = hits.length + total
-      logger.info(s"Sent $sent in ${Client.formatElapsedTime(System.currentTimeMillis() - startTime)}")
-      actor ! DONE
-      false
-    } else {
-      true
-    }
   }
 
 }
