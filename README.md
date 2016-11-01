@@ -26,7 +26,13 @@ Usage: es-client [options]
                            default value 9301
   -u, --targetCluster <target_cluster>
                            
-  --help                   prints this usage text
+  --remoteAddress <remote_address>
+                           
+  --remotePort <remote_port>
+                           
+  --remoteName <remote_name>
+                           
+  --help                   Prints the usage text.
 ```
 
 Example:

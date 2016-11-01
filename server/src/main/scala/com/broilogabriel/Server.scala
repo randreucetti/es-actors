@@ -1,63 +1,85 @@
 package com.broilogabriel
 
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor.Actor
+import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.PoisonPill
 import akka.actor.Props
-import org.elasticsearch.action.bulk.BulkProcessor
+import com.typesafe.scalalogging.LazyLogging
 import org.elasticsearch.action.index.IndexRequest
 
 /**
   * Created by broilogabriel on 21/10/16.
   */
-object Server extends App {
+object Server extends App with LazyLogging {
+  logger.info(s"${BuildInfo.name} - ${BuildInfo.version}")
   val actorSystem = ActorSystem.create("MigrationServer")
   val actor = actorSystem.actorOf(Props[Server], name = "RemoteServer")
-  actor ! "Starting Migration Server"
 }
 
-class Server extends Actor {
+class Server extends Actor with LazyLogging {
 
   def receive = {
 
     case cluster: Cluster =>
       val uuid = UUID.randomUUID
-      println(s"Received cluster config: $cluster")
-      val handler = context.actorOf(Props(classOf[BulkHandler], Cluster.getBulkProcessor(Cluster.getCluster(cluster))
-        .build()), name = uuid.toString)
-      handler.forward(uuid)
+      logger.info(s"Received cluster config: $cluster")
+      context.actorOf(
+        Props(classOf[BulkHandler], cluster),
+        name = uuid.toString
+      ).forward(uuid)
 
-    case data: TransferObject => self.forward(data)
+    case other =>
+      logger.info(s"Unknown message: $other")
 
-    case msg: String => println(s"Received: ${msg}")
   }
 
 }
 
-class BulkHandler(bulkProcessor: BulkProcessor) extends Actor {
+class BulkHandler(cluster: Cluster) extends Actor with LazyLogging {
 
-  def receive = {
+  val bListener = BulkListener(Cluster.getCluster(cluster), self)
+  val bulkProcessor = Cluster.getBulkProcessor(bListener).build()
+  val finishedActions: AtomicLong = new AtomicLong
+
+  override def postStop(): Unit = {
+    logger.info(s"Stopping BulkHandler ${self.path.name}")
+    bulkProcessor.flush()
+    bListener.client.close()
+  }
+
+  var client: ActorRef = _
+
+  override def receive = {
 
     case uuid: UUID =>
-      println(s"It's me ${uuid.toString}")
-      sender() ! uuid
+      logger.info(s"It's me ${uuid.toString}")
+      client = sender()
+      sender ! uuid
 
-    case data: TransferObject =>
-      val indexRequest = new IndexRequest(data.index, data.hitType, data.hitId)
-      indexRequest.source(data.source)
+    case to: TransferObject =>
+      val indexRequest = new IndexRequest(to.index, to.hitType, to.hitId)
+      indexRequest.source(to.source)
       bulkProcessor.add(indexRequest)
 
     case DONE =>
-      sender() ! MORE
+      logger.info("Received DONE, gonna send PoisonPill")
+      sender ! PoisonPill
 
-    case some: Int =>
-      bulkProcessor.flush()
-      println(s"Client sent $some, sending PoisonPill now")
-      sender() ! PoisonPill
+    case finished: Int =>
+      val actions = finishedActions.addAndGet(finished)
+      logger.info(s"Processed $actions of ${cluster.totalHits}")
+      if (actions < cluster.totalHits) {
+        client ! MORE
+      } else {
+        self ! PoisonPill
+      }
 
-    case other => println(s"Something else here? $other")
+    case other =>
+      logger.info(s"Unknown message: $other")
   }
 
 }
