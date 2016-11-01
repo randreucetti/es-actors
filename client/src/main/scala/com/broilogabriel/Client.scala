@@ -36,6 +36,16 @@ object Client extends LazyLogging {
     f"$hours%02d:${minutes - HOURS.toMinutes(hours)}%02d:${MILLISECONDS.toSeconds(millis) - MINUTES.toSeconds(minutes)}%02d"
   }
 
+  def indicesByWeeks(startDate: String, weeksBack: String, validate: Boolean = false): Option[Set[String]] = {
+    try {
+      val weeks = weeksBack.toInt
+      val endDate = DateTime.parse(startDate).minusWeeks(weeks).withDayOfWeek(DateTimeConstants.SUNDAY)
+      indicesByRange(startDate, endDate.toString, validate = validate)
+    } catch {
+      case e: IllegalArgumentException => None
+    }
+  }
+
   def indicesByRange(startDate: String, endDate: String, validate: Boolean = false): Option[Set[String]] = {
     try {
       val sd = DateTime.parse(startDate).withDayOfWeek(DateTimeConstants.SUNDAY)
@@ -90,16 +100,22 @@ object Client extends LazyLogging {
     opt[Int]("remotePort").valueName("<remote_port>").action((x, c) => c.copy(remotePort = x))
     opt[String]("remoteName").valueName("<remote_name>").action((x, c) => c.copy(remoteName = x))
 
+    opt[Map[String, String]]("nightly").valueName("value name to define")
+      .validate(p => {
+        if (p.contains("date") && p.contains("weeksBack") &&
+          indicesByWeeks(p("date"), p("weeksBack"), validate = true).isDefined) success
+        else failure("You have to define date=<some_date> and weeksBack=<number_of_weeks>")
+      })
+      .action((x, c) => c.copy(indices = indicesByWeeks(x("date"), x("weeksBack")).get))
+
     help("help").text("Prints the usage text.")
+
+    checkConfig(c => if (c.indices.nonEmpty) success else failure("Missing indices. Check help to send index."))
   }
 
   def main(args: Array[String]): Unit = {
     parser.parse(args, Config()) match {
-      case Some(config) => if (config.indices.nonEmpty) {
-        init(config)
-      } else {
-        logger.info("Missing indices. Check help to send index")
-      }
+      case Some(config) => init(config)
       case None => logger.info("Try again with the arguments")
     }
   }
