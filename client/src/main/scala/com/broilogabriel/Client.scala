@@ -2,6 +2,7 @@ package com.broilogabriel
 
 import java.util.UUID
 import java.util.concurrent.TimeUnit._
+import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
 import com.broilogabriel.Reaper.WatchMe
@@ -121,6 +122,7 @@ class Client(config: Config) extends Actor with LazyLogging {
   var scroll: SearchResponse = _
   var cluster: TransportClient = _
   var uuid: UUID = _
+  val total: AtomicLong = new AtomicLong()
 
   override def preStart(): Unit = {
     cluster = Cluster.getCluster(config.source)
@@ -144,11 +146,14 @@ class Client(config: Config) extends Actor with LazyLogging {
   override def receive = {
 
     case MORE =>
-      logger.info(s"I want more ${sender.path.name}")
+      logger.info(s"Server ${sender.path.name} requesting more")
       val hits = Cluster.scroller(config.index, scroll.getScrollId, cluster)
       if (hits.nonEmpty) {
-        hits.foreach(hit => sender ! TransferObject(uuid, config.index, hit.getType, hit.getId, hit.getSourceAsString))
-        logger.info(s"${config.index} Sent ${hits.length} of ${scroll.getHits.getTotalHits} | ${config.index}")
+        hits.foreach(hit => {
+          val data = TransferObject(uuid, config.index, hit.getType, hit.getId, hit.getSourceAsString)
+          sender ! data
+        })
+        logger.info(s"${config.index} Sent ${total.addAndGet(hits.length)} of ${scroll.getHits.getTotalHits} | ${config.index}")
       } else {
         sender ! DONE
       }
@@ -158,6 +163,8 @@ class Client(config: Config) extends Actor with LazyLogging {
       logger.info(s"${config.index} Scroll ${scroll.getScrollId.substring(0, 10)} - ${scroll.getHits.getTotalHits}")
       self.forward(MORE)
 
+    case other =>
+      logger.info(s"Unknown message: $other")
   }
 
 }

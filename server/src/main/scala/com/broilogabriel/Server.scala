@@ -28,19 +28,20 @@ class Server extends Actor with LazyLogging {
       val uuid = UUID.randomUUID
       logger.info(s"Received cluster config: $cluster")
       context.actorOf(
-        Props(classOf[BulkHandler], cluster, sender),
+        Props(classOf[BulkHandler], cluster),
         name = uuid.toString
       ).forward(uuid)
 
-    case other => logger.info(s"Unknown message: $other")
+    case other =>
+      logger.info(s"Unknown message: $other")
 
   }
 
 }
 
-class BulkHandler(cluster: Cluster, origin: ActorRef) extends Actor with LazyLogging {
+class BulkHandler(cluster: Cluster) extends Actor with LazyLogging {
 
-  val bListener = BulkListener(Cluster.getCluster(cluster), origin)
+  val bListener = BulkListener(Cluster.getCluster(cluster), self)
   val bulkProcessor = Cluster.getBulkProcessor(bListener).build()
   val finishedActions: AtomicLong = new AtomicLong
 
@@ -50,10 +51,13 @@ class BulkHandler(cluster: Cluster, origin: ActorRef) extends Actor with LazyLog
     bListener.client.close()
   }
 
+  var client: ActorRef = _
+
   override def receive = {
 
     case uuid: UUID =>
       logger.info(s"It's me ${uuid.toString}")
+      client = sender()
       sender ! uuid
 
     case to: TransferObject =>
@@ -69,12 +73,13 @@ class BulkHandler(cluster: Cluster, origin: ActorRef) extends Actor with LazyLog
       val actions = finishedActions.addAndGet(finished)
       logger.info(s"Processed $actions of ${cluster.totalHits}")
       if (actions < cluster.totalHits) {
-        sender ! MORE
+        client ! MORE
       } else {
         self ! PoisonPill
       }
 
-    case other => logger.info(s"Something else here? $other")
+    case other =>
+      logger.info(s"Unknown message: $other")
   }
 
 }

@@ -30,9 +30,9 @@ object Cluster {
 
   def getBulkProcessor(listener: BulkListener): Builder = {
     BulkProcessor.builder(listener.client, listener)
-      .setBulkActions(50000)
+      .setBulkActions(25000)
       .setBulkSize(new ByteSizeValue(25, ByteSizeUnit.MB))
-      .setFlushInterval(TimeValue.timeValueSeconds(30))
+      .setFlushInterval(TimeValue.timeValueSeconds(5))
   }
 
 }
@@ -42,12 +42,12 @@ case class BulkListener(transportClient: TransportClient, handler: ActorRef) ext
   def client: TransportClient = transportClient
 
   override def beforeBulk(executionId: Long, request: BulkRequest): Unit = {
-    logger.info(s"${handler.path.name} B: $executionId | ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} " +
+    logger.info(s"${handler.path.name} Before: $executionId | Size: ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} " +
       s"| actions - ${request.numberOfActions()}")
   }
 
   override def afterBulk(executionId: Long, request: BulkRequest, response: BulkResponse): Unit = {
-    logger.info(s"${handler.path.name} A: $executionId | ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} " +
+    logger.info(s"${handler.path.name} After: $executionId | Size: ${new ByteSizeValue(request.estimatedSizeInBytes()).getMb} " +
       s"| took - ${response.getTook}")
     handler ! request.numberOfActions()
   }
