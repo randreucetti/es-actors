@@ -1,10 +1,11 @@
 package com.broilogabriel
 
 import java.util.UUID
-import java.util.concurrent.TimeUnit._
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
+import akka.pattern._
+import akka.util.Timeout
 import com.broilogabriel.Reaper.WatchMe
 import com.typesafe.scalalogging.LazyLogging
 import org.elasticsearch.action.search.SearchResponse
@@ -14,6 +15,8 @@ import org.joda.time.DateTimeConstants
 import scopt.OptionParser
 
 import scala.annotation.tailrec
+import scala.concurrent.Await
+import scala.concurrent.duration._
 
 /**
   * Created by broilogabriel on 24/10/16.
@@ -140,6 +143,8 @@ class Client(config: Config) extends Actor with LazyLogging {
   var uuid: UUID = _
   val total: AtomicLong = new AtomicLong()
 
+  implicit val timeout = Timeout(25.seconds)
+
   override def preStart(): Unit = {
     cluster = Cluster.getCluster(config.source)
     scroll = Cluster.getScrollId(cluster, config.index)
@@ -168,7 +173,10 @@ class Client(config: Config) extends Actor with LazyLogging {
       if (hits.nonEmpty) {
         hits.foreach(hit => {
           val data = TransferObject(uuid, config.index, hit.getType, hit.getId, hit.getSourceAsString)
-          sender ! data
+          val serverResponse = Await.result(sender ? data, timeout.duration)
+          if (data.hitId != serverResponse) {
+            logger.info(s"Expected response: ${data.hitId}, but server responded with: $serverResponse")
+          }
         })
         logger.info(s"${config.index} Sent ${total.addAndGet(hits.length)} of ${scroll.getHits.getTotalHits} | ${config.index}")
       } else {

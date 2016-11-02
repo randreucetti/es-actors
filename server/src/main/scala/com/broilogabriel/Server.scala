@@ -64,6 +64,7 @@ class BulkHandler(cluster: Cluster) extends Actor with LazyLogging {
       val indexRequest = new IndexRequest(to.index, to.hitType, to.hitId)
       indexRequest.source(to.source)
       bulkProcessor.add(indexRequest)
+      sender ! to.hitId
 
     case DONE =>
       logger.info("Received DONE, gonna send PoisonPill")
