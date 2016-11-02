@@ -36,11 +36,11 @@ object Client extends LazyLogging {
     f"$hours%02d:${minutes - HOURS.toMinutes(hours)}%02d:${MILLISECONDS.toSeconds(millis) - MINUTES.toSeconds(minutes)}%02d"
   }
 
-  def indicesByWeeks(startDate: String, weeksBack: String, validate: Boolean = false): Option[Set[String]] = {
+  def indicesByWeeks(date: String, weeksBack: String, validate: Boolean = false): Option[Set[String]] = {
     try {
       val weeks = weeksBack.toInt
-      val endDate = DateTime.parse(startDate).minusWeeks(weeks).withDayOfWeek(DateTimeConstants.SUNDAY)
-      indicesByRange(startDate, endDate.toString, validate = validate)
+      val startDate = DateTime.parse(date).minusWeeks(weeks).withDayOfWeek(DateTimeConstants.SUNDAY)
+      indicesByRange(startDate.toString, date, validate = validate)
     } catch {
       case e: IllegalArgumentException => None
     }
@@ -146,6 +146,7 @@ class Client(config: Config) extends Actor with LazyLogging {
     if (Cluster.checkIndex(cluster, config.index)) {
       val path = s"akka.tcp://MigrationServer@${config.remoteAddress}:${config.remotePort}/user/${config.remoteName}"
       val remote = context.actorSelection(path)
+      // TODO: add handshake before start sending data, the server might not be alive and the application is not killed
       remote ! config.target.copy(totalHits = scroll.getHits.getTotalHits)
       logger.info(s"Connected to remote for ${config.index}")
     } else {
