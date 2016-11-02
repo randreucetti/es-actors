@@ -78,7 +78,7 @@ object Client extends LazyLogging {
     head(BuildInfo.name, BuildInfo.version)
 
     opt[Seq[String]]('i', "indices").valueName("<index1>,<index2>...")
-      .action((x, c) => c.copy(indices = x.toSet))
+      .action((x, c) => c.copy(indices = c.indices ++ x.toSet))
     opt[(String, String)]('d', "dateRange").validate(
       d => if (indicesByRange(d._1, d._2, validate = true).isDefined) success else failure("Invalid dates")
     ).action({
@@ -109,7 +109,7 @@ object Client extends LazyLogging {
           indicesByWeeks(p("date"), p("weeksBack"), validate = true).isDefined) success
         else failure("You have to define date=<some_date> and weeksBack=<number_of_weeks>")
       })
-      .action((x, c) => c.copy(indices = indicesByWeeks(x("date"), x("weeksBack")).get))
+      .action((x, c) => c.copy(indices = c.indices ++ indicesByWeeks(x("date"), x("weeksBack")).get))
 
     help("help").text("Prints the usage text.")
 
