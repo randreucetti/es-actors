@@ -178,7 +178,8 @@ class Client(config: Config) extends Actor with LazyLogging {
             logger.info(s"Expected response: ${data.hitId}, but server responded with: $serverResponse")
           }
         })
-        logger.info(s"${config.index} Sent ${total.addAndGet(hits.length)} of ${scroll.getHits.getTotalHits} | ${config.index}")
+        val totalSent = total.addAndGet(hits.length)
+        logger.info(s"${config.index} ${(totalSent * 100) / scroll.getHits.getTotalHits}% | Sent $totalSent of ${scroll.getHits.getTotalHits}")
       } else {
         sender ! DONE
       }

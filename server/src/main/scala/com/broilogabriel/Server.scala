@@ -72,7 +72,7 @@ class BulkHandler(cluster: Cluster) extends Actor with LazyLogging {
 
     case finished: Int =>
       val actions = finishedActions.addAndGet(finished)
-      logger.info(s"Processed $actions of ${cluster.totalHits}")
+      logger.info(s"Processed ${(actions * 100) / cluster.totalHits} $actions of ${cluster.totalHits}")
       if (actions < cluster.totalHits) {
         client ! MORE
       } else {
