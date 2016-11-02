@@ -27,7 +27,7 @@ object Cluster {
       .execute().actionGet().isExists
   }
 
-  def getScrollId(cluster: TransportClient, index: String, size: Int = 5000): SearchResponse = {
+  def getScrollId(cluster: TransportClient, index: String, size: Int = 10000): SearchResponse = {
     cluster.prepareSearch(index)
       .setSearchType(SearchType.SCAN)
       .setScroll(TimeValue.timeValueMinutes(5))
