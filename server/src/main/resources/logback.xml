@@ -1,4 +1,7 @@
 <configuration>
+
+  <timestamp key="time" datePattern="yyyyMMdd_HHmmss"/>
+
   <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
       <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
@@ -7,7 +10,7 @@
 
   <appender name="FILE" class="ch.qos.logback.core.FileAppender">
     <!-- path to your log file, where you want to store logs -->
-    <file>./test.log</file>
+    <file>./logs/${time}-server.log</file>
     <append>false</append>
     <encoder>
       <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
@@ -16,6 +19,6 @@
 
   <root level="info">
     <appender-ref ref="STDOUT"/>
-    <!-- <appender-ref ref="FILE"/> -->
+    <appender-ref ref="FILE"/>
   </root>
 </configuration>
