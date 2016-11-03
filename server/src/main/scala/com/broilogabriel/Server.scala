@@ -26,14 +26,14 @@ class Server extends Actor with LazyLogging {
 
     case cluster: Cluster =>
       val uuid = UUID.randomUUID
-      logger.info(s"Received cluster config: $cluster")
+      logger.info(s"Server received cluster config: $cluster")
       context.actorOf(
         Props(classOf[BulkHandler], cluster),
         name = uuid.toString
       ).forward(uuid)
 
     case other =>
-      logger.info(s"Unknown message: $other")
+      logger.info(s"Server unknown message: $other")
 
   }
 
@@ -46,7 +46,7 @@ class BulkHandler(cluster: Cluster) extends Actor with LazyLogging {
   val finishedActions: AtomicLong = new AtomicLong
 
   override def postStop(): Unit = {
-    logger.info(s"Stopping BulkHandler ${self.path.name}")
+    logger.info(s"${self.path.name} - Stopping BulkHandler")
     bulkProcessor.flush()
     bListener.client.close()
   }
@@ -56,7 +56,7 @@ class BulkHandler(cluster: Cluster) extends Actor with LazyLogging {
   override def receive = {
 
     case uuid: UUID =>
-      logger.info(s"It's me ${uuid.toString}")
+      logger.info(s"${self.path.name} - Starting")
       client = sender()
       sender ! uuid
 
@@ -67,12 +67,12 @@ class BulkHandler(cluster: Cluster) extends Actor with LazyLogging {
       sender ! to.hitId
 
     case DONE =>
-      logger.info("Received DONE, gonna send PoisonPill")
+      logger.info(s"${self.path.name} - Received DONE, gonna send PoisonPill")
       sender ! PoisonPill
 
     case finished: Int =>
       val actions = finishedActions.addAndGet(finished)
-      logger.info(s"Processed ${(actions * 100) / cluster.totalHits} $actions of ${cluster.totalHits}")
+      logger.info(s"${self.path.name} - Processed ${(actions * 100) / cluster.totalHits}% $actions of ${cluster.totalHits}")
       if (actions < cluster.totalHits) {
         client ! MORE
       } else {
@@ -80,7 +80,7 @@ class BulkHandler(cluster: Cluster) extends Actor with LazyLogging {
       }
 
     case other =>
-      logger.info(s"Unknown message: $other")
+      logger.info(s"${self.path.name} - Unknown message: $other")
   }
 
 }

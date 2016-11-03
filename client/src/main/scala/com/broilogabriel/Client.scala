@@ -153,7 +153,7 @@ class Client(config: Config) extends Actor with LazyLogging {
       val remote = context.actorSelection(path)
       // TODO: add handshake before start sending data, the server might not be alive and the application is not killed
       remote ! config.target.copy(totalHits = scroll.getHits.getTotalHits)
-      logger.info(s"Connected to remote for ${config.index}")
+      logger.info(s"${uuid.toString} - ${config.index} - Connected to remote")
     } else {
       logger.info(s"Invalid index ${config.index}")
       self ! PoisonPill
@@ -161,36 +161,37 @@ class Client(config: Config) extends Actor with LazyLogging {
   }
 
   override def postStop(): Unit = {
-    logger.info(s"${config.index} Requested to stop.")
+    logger.info(s"${uuid.toString} - ${config.index} - Requested to stop.")
     cluster.close()
   }
 
   override def receive = {
 
     case MORE =>
-      logger.info(s"Server ${sender.path.name} requesting more")
+      logger.info(s"${sender.path.name} - requesting more")
       val hits = Cluster.scroller(config.index, scroll.getScrollId, cluster)
       if (hits.nonEmpty) {
         hits.foreach(hit => {
           val data = TransferObject(uuid, config.index, hit.getType, hit.getId, hit.getSourceAsString)
           val serverResponse = Await.result(sender ? data, timeout.duration)
           if (data.hitId != serverResponse) {
-            logger.info(s"Expected response: ${data.hitId}, but server responded with: $serverResponse")
+            logger.info(s"${sender.path.name} - Expected response: ${data.hitId}, but server responded with: $serverResponse")
           }
         })
         val totalSent = total.addAndGet(hits.length)
-        logger.info(s"${config.index} ${(totalSent * 100) / scroll.getHits.getTotalHits}% | Sent $totalSent of ${scroll.getHits.getTotalHits}")
+        logger.info(s"${sender.path.name} - ${config.index} - ${(totalSent * 100) / scroll.getHits.getTotalHits}% | Sent $totalSent of ${scroll.getHits.getTotalHits}")
       } else {
+        logger.info(s"${sender.path.name} - ${config.index} - Sending DONE")
         sender ! DONE
       }
 
     case uuidInc: UUID =>
       uuid = uuidInc
-      logger.info(s"${config.index} Scroll ${scroll.getScrollId.substring(0, 10)} - ${scroll.getHits.getTotalHits}")
+      logger.info(s"${sender.path.name} - ${config.index} - Scroll ${scroll.getScrollId.substring(0, 10)} - ${scroll.getHits.getTotalHits}")
       self.forward(MORE)
 
     case other =>
-      logger.info(s"Unknown message: $other")
+      logger.info(s"${sender.path.name} - ${config.index} - Unknown message: $other")
   }
 
 }
