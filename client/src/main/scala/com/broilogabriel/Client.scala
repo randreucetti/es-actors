@@ -1,6 +1,7 @@
 package com.broilogabriel
 
 import java.util.UUID
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
@@ -143,7 +144,7 @@ class Client(config: Config) extends Actor with LazyLogging {
   var uuid: UUID = _
   val total: AtomicLong = new AtomicLong()
 
-  implicit val timeout = Timeout(25.seconds)
+  implicit val timeout = Timeout(120.seconds)
 
   override def preStart(): Unit = {
     cluster = Cluster.getCluster(config.source)
@@ -153,7 +154,7 @@ class Client(config: Config) extends Actor with LazyLogging {
       val remote = context.actorSelection(path)
       // TODO: add handshake before start sending data, the server might not be alive and the application is not killed
       remote ! config.target.copy(totalHits = scroll.getHits.getTotalHits)
-      logger.info(s"${uuid.toString} - ${config.index} - Connected to remote")
+      logger.info(s"${config.index} - Connected to remote")
     } else {
       logger.info(s"Invalid index ${config.index}")
       self ! PoisonPill
@@ -173,9 +174,14 @@ class Client(config: Config) extends Actor with LazyLogging {
       if (hits.nonEmpty) {
         hits.foreach(hit => {
           val data = TransferObject(uuid, config.index, hit.getType, hit.getId, hit.getSourceAsString)
-          val serverResponse = Await.result(sender ? data, timeout.duration)
-          if (data.hitId != serverResponse) {
-            logger.info(s"${sender.path.name} - Expected response: ${data.hitId}, but server responded with: $serverResponse")
+          try {
+            val serverResponse = Await.result(sender ? data, timeout.duration)
+            if (data.hitId != serverResponse) {
+              logger.info(s"${sender.path.name} - Expected response: ${data.hitId}, but server responded with: $serverResponse")
+            }
+          } catch {
+            case e: TimeoutException | InterruptedException =>
+              logger.warn(s"${sender.path.name} - Exception  awaiting for $data")
           }
         })
         val totalSent = total.addAndGet(hits.length)
