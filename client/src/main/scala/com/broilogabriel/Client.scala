@@ -180,8 +180,9 @@ class Client(config: Config) extends Actor with LazyLogging {
               logger.info(s"${sender.path.name} - Expected response: ${data.hitId}, but server responded with: $serverResponse")
             }
           } catch {
-            case e: TimeoutException | InterruptedException =>
+            case e@(_: TimeoutException | _: InterruptedException) =>
               logger.warn(s"${sender.path.name} - Exception  awaiting for $data")
+            case e => logger.error(s"Unexpected Exception: ${e.getMessage}")
           }
         })
         val totalSent = total.addAndGet(hits.length)
