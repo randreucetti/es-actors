@@ -23,7 +23,7 @@ libraryDependencies += "com.typesafe.akka" %% "akka-remote" % "2.4.11"
 
 libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0"
 
-libraryDependencies += "org.elasticsearch" % "elasticsearch" % "2.4.1"
+libraryDependencies += "org.elasticsearch" % "elasticsearch" % "1.7.5"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.7"
 

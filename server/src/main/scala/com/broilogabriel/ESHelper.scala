@@ -10,6 +10,7 @@ import org.elasticsearch.action.bulk.BulkProcessor.Builder
 import org.elasticsearch.action.bulk.BulkRequest
 import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.client.transport.TransportClient
+import org.elasticsearch.common.settings.ImmutableSettings
 import org.elasticsearch.common.settings.Settings
 import org.elasticsearch.common.transport.InetSocketTransportAddress
 import org.elasticsearch.common.unit.ByteSizeUnit
@@ -23,9 +24,8 @@ import org.elasticsearch.common.unit.TimeValue
 object Cluster {
 
   def getCluster(cluster: Cluster): TransportClient = {
-    val settings = Settings.settingsBuilder().put("cluster.name", cluster.name).build()
-    TransportClient.builder().settings(settings).build()
-      .addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(cluster.address), cluster.port))
+    val settings = ImmutableSettings.settingsBuilder().put("cluster.name", cluster.name).build()
+    new TransportClient(settings).addTransportAddress(new InetSocketTransportAddress(cluster.address, cluster.port))
   }
 
   def getBulkProcessor(listener: BulkListener): Builder = {
